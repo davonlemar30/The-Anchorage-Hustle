@@ -58,6 +58,11 @@ function createOpeningState() {
       seen: {},
       lastTriggeredDay: {},
       cooldowns: {},
+      runtime: {
+        nextIndex: 0,
+        cycleCount: 0,
+        lastEventDay: 0,
+      },
     },
   };
 }
@@ -135,6 +140,69 @@ const sceneByLocation = {
   },
 };
 
+const runtimeEvents = [
+  {
+    id: "loose-talk-at-the-stoop",
+    title: "Loose Talk at the Stoop",
+    text: "Two locals trade names on the front stoop. You catch useful whispers before they notice.",
+    effect() {
+      state.reputation = clamp(state.reputation + 1, 0, 100);
+    },
+  },
+  {
+    id: "supply-flip",
+    title: "Supply Flip",
+    text: "A quick side flip opens up on basic supplies. Nothing major, but it keeps you moving.",
+    effect() {
+      state.money += 60;
+    },
+  },
+  {
+    id: "patrol-sweep",
+    title: "Patrol Sweep",
+    text: "A slow patrol sweep hits your block. Everyone tightens up until the cruisers pass.",
+    effect() {
+      state.heat = clamp(state.heat + 2, 0, 100);
+    },
+  },
+  {
+    id: "favor-called-in",
+    title: "Favor Called In",
+    text: "A contact asks for a favor with no cash upfront. You do it to build standing.",
+    effect() {
+      state.reputation = clamp(state.reputation + 2, 0, 100);
+      state.money = Math.max(0, state.money - 25);
+    },
+  },
+  {
+    id: "close-call",
+    title: "Close Call",
+    text: "A meetup goes sideways and you have to cut through alleys to avoid trouble.",
+    effect() {
+      state.health = clamp(state.health - 5, 0, 100);
+      state.heat = clamp(state.heat + 1, 0, 100);
+    },
+  },
+  {
+    id: "small-win",
+    title: "Small Win",
+    text: "A clean exchange lands and your name starts carrying a little farther.",
+    effect() {
+      state.money += 90;
+      state.reputation = clamp(state.reputation + 1, 0, 100);
+    },
+  },
+  {
+    id: "quiet-night-reset",
+    title: "Quiet Night Reset",
+    text: "The block stays quiet for once. You recover, reset, and plan the next run.",
+    effect() {
+      state.heat = clamp(state.heat - 3, 0, 100);
+      state.health = clamp(state.health + 4, 0, 100);
+    },
+  },
+];
+
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -161,6 +229,38 @@ function advanceTime() {
 function renderHud() {
   el.hudPrimary.textContent = `907 HUSTLE | Day ${state.day} | ${state.timeOfDay} | ${state.location}`;
   el.hudStats.textContent = `Cash: $${state.money} | Health: ${state.health} | Rep: ${state.reputation} | Heat: ${state.heat}`;
+}
+
+function getEventRuntimeState() {
+  if (!state.eventState.runtime) {
+    state.eventState.runtime = {
+      nextIndex: 0,
+      cycleCount: 0,
+      lastEventDay: 0,
+    };
+  }
+  return state.eventState.runtime;
+}
+
+function runEventRuntime() {
+  if (!state.flags.openingComplete || uiState.gameOver) return null;
+
+  const runtime = getEventRuntimeState();
+  if (runtime.lastEventDay === state.day) return null;
+
+  const eventIndex = runtime.nextIndex % runtimeEvents.length;
+  const event = runtimeEvents[eventIndex];
+  if (!event) return null;
+
+  event.effect();
+
+  state.eventState.seen[event.id] = (state.eventState.seen[event.id] || 0) + 1;
+  state.eventState.lastTriggeredDay[event.id] = state.day;
+  runtime.lastEventDay = state.day;
+  runtime.nextIndex = (eventIndex + 1) % runtimeEvents.length;
+  if (runtime.nextIndex === 0) runtime.cycleCount += 1;
+
+  return event;
 }
 
 function renderScene() {
@@ -406,9 +506,21 @@ function endOfActionCheck() {
 function resolveAction(text, tone = "", options = {}) {
   const { skipAdvanceTime = false } = options;
   addLog(text, tone);
-  uiState.pendingResult = { text, tone };
-  uiState.awaitingContinue = true;
   if (!skipAdvanceTime) advanceTime();
+
+  const runtimeEvent = runEventRuntime();
+  if (runtimeEvent) {
+    const runtimeText = `[${runtimeEvent.title}] ${runtimeEvent.text}`;
+    addLog(runtimeText, "good");
+    uiState.pendingResult = {
+      text: `${text}\n\n${runtimeText}`,
+      tone,
+    };
+  } else {
+    uiState.pendingResult = { text, tone };
+  }
+
+  uiState.awaitingContinue = true;
   endOfActionCheck();
 }
 
@@ -477,6 +589,8 @@ function loadGame() {
     const loaded = JSON.parse(raw);
     if (!loaded.timeOfDay && loaded.time) loaded.timeOfDay = loaded.time;
     Object.assign(state, createOpeningState(), loaded);
+    state.eventState = Object.assign(createOpeningState().eventState, loaded.eventState || {});
+    state.eventState.runtime = Object.assign(createOpeningState().eventState.runtime, state.eventState.runtime || {});
     Object.assign(uiState, createUiState());
     el.startScreen.classList.add("hidden");
     el.endScreen.classList.add("hidden");
