@@ -26,24 +26,55 @@ const submenuByCategory = {
   rest: ["Sleep", "Wait", "Recover"],
 };
 
-const state = {
-  playerName: "",
-  day: 1,
-  time: "Morning",
-  money: 200,
-  health: 100,
-  reputation: 0,
-  heat: 0,
-  location: "Cousin's Apt",
-  activeCategory: "people",
-  activeSubmenu: "Cousin",
-  openingComplete: false,
-  inventory: {},
-  log: [],
-  awaitingContinue: false,
-  pendingResult: null,
-  gameOver: false,
-};
+function createOpeningState() {
+  return {
+    playerName: "",
+    day: 1,
+    timeOfDay: "Morning",
+    location: "Cousin's Apt",
+    money: 200,
+    health: 100,
+    reputation: 0,
+    heat: 0,
+    inventory: {
+      snacks: 0,
+      basic_meds: 0,
+      burner_phone: 0,
+    },
+    relationships: {
+      dre_trust: 0,
+      mina_trust: 0,
+    },
+    flags: {
+      openingComplete: false,
+    },
+    metrics: {},
+    unlocks: {
+      events: [],
+      locations: [],
+      vendors: [],
+    },
+    eventState: {
+      seen: {},
+      lastTriggeredDay: {},
+      cooldowns: {},
+    },
+  };
+}
+
+function createUiState() {
+  return {
+    activeCategory: "people",
+    activeSubmenu: "Cousin",
+    log: [],
+    awaitingContinue: false,
+    pendingResult: null,
+    gameOver: false,
+  };
+}
+
+const state = createOpeningState();
+const uiState = createUiState();
 
 const el = {
   startScreen: document.getElementById("startScreen"),
@@ -117,18 +148,18 @@ function inventoryCount() {
 }
 
 function addLog(text, tone = "") {
-  state.log.unshift({ day: state.day, text, tone });
-  state.log = state.log.slice(0, 80);
+  uiState.log.unshift({ day: state.day, text, tone });
+  uiState.log = uiState.log.slice(0, 80);
 }
 
 function advanceTime() {
   const cycle = ["Morning", "Afternoon", "Evening", "Late Night"];
-  const idx = cycle.indexOf(state.time);
-  state.time = cycle[(idx + 1) % cycle.length];
+  const idx = cycle.indexOf(state.timeOfDay);
+  state.timeOfDay = cycle[(idx + 1) % cycle.length];
 }
 
 function renderHud() {
-  el.hudPrimary.textContent = `907 HUSTLE | Day ${state.day} | ${state.time} | ${state.location}`;
+  el.hudPrimary.textContent = `907 HUSTLE | Day ${state.day} | ${state.timeOfDay} | ${state.location}`;
   el.hudStats.textContent = `Cash: $${state.money} | Health: ${state.health} | Rep: ${state.reputation} | Heat: ${state.heat}`;
 }
 
@@ -143,13 +174,13 @@ function renderNav() {
   el.navRail.innerHTML = "";
   navCategories.forEach((category) => {
     const btn = document.createElement("button");
-    btn.className = `nav-btn ${category.key === state.activeCategory ? "active" : ""}`;
+    btn.className = `nav-btn ${category.key === uiState.activeCategory ? "active" : ""}`;
     btn.innerHTML = `<span class="nav-icon">${category.icon}</span>${category.label}`;
-    btn.disabled = state.awaitingContinue;
+    btn.disabled = uiState.awaitingContinue;
     btn.addEventListener("click", () => {
-      if (state.awaitingContinue) return;
-      state.activeCategory = category.key;
-      state.activeSubmenu = submenuByCategory[category.key][0];
+      if (uiState.awaitingContinue) return;
+      uiState.activeCategory = category.key;
+      uiState.activeSubmenu = submenuByCategory[category.key][0];
       render();
     });
     el.navRail.appendChild(btn);
@@ -157,18 +188,18 @@ function renderNav() {
 }
 
 function renderSubmenu() {
-  const category = navCategories.find((entry) => entry.key === state.activeCategory);
+  const category = navCategories.find((entry) => entry.key === uiState.activeCategory);
   el.submenuTitle.textContent = category ? `${category.label} Options` : "Options";
   el.submenuPanel.innerHTML = "";
 
-  submenuByCategory[state.activeCategory].forEach((entry) => {
+  submenuByCategory[uiState.activeCategory].forEach((entry) => {
     const btn = document.createElement("button");
-    btn.className = `submenu-btn ${entry === state.activeSubmenu ? "active" : ""}`;
+    btn.className = `submenu-btn ${entry === uiState.activeSubmenu ? "active" : ""}`;
     btn.textContent = entry;
-    btn.disabled = state.awaitingContinue;
+    btn.disabled = uiState.awaitingContinue;
     btn.addEventListener("click", () => {
-      if (state.awaitingContinue) return;
-      state.activeSubmenu = entry;
+      if (uiState.awaitingContinue) return;
+      uiState.activeSubmenu = entry;
       handleSubmenuAction(entry);
     });
     el.submenuPanel.appendChild(btn);
@@ -176,7 +207,7 @@ function renderSubmenu() {
 }
 
 function renderStory() {
-  if (!state.openingComplete) {
+  if (!state.flags.openingComplete) {
     el.storyTitle.textContent = "Opening";
     el.storyText.textContent =
       "You wake up stiff on the couch.\nYour cousin gave you thirty days.\nYou got two hundred dollars, no motion, and no one in this city really checking for you yet.\nYou hear movement in the kitchen.\nWhat do you do first?";
@@ -192,9 +223,9 @@ function renderStory() {
     return;
   }
 
-  if (state.awaitingContinue && state.pendingResult) {
+  if (uiState.awaitingContinue && uiState.pendingResult) {
     el.storyTitle.textContent = "Action Result";
-    el.storyText.textContent = state.pendingResult.text;
+    el.storyText.textContent = uiState.pendingResult.text;
     el.choiceButtons.innerHTML = "";
     const continueBtn = document.createElement("button");
     continueBtn.className = "choice-btn continue-btn";
@@ -205,16 +236,16 @@ function renderStory() {
   }
 
   el.storyTitle.textContent = "Street Feed";
-  const recent = state.log[0]?.text || "Pick an option on the left to make your next move.";
+  const recent = uiState.log[0]?.text || "Pick an option on the left to make your next move.";
   el.storyText.textContent = `${recent}\n\nChoose from Navigation and Options for your next move.`;
   el.choiceButtons.innerHTML = "";
 }
 
 function renderDetailPanel() {
-  el.detailTitle.textContent = state.openingComplete ? "Journal" : "Opening Notes";
+  el.detailTitle.textContent = state.flags.openingComplete ? "Journal" : "Opening Notes";
   el.detailPanel.innerHTML = "";
 
-  if (!state.log.length) {
+  if (!uiState.log.length) {
     const row = document.createElement("div");
     row.className = "log-item";
     row.textContent = "No events yet. Your first move will set the tone.";
@@ -222,7 +253,7 @@ function renderDetailPanel() {
     return;
   }
 
-  state.log.slice(0, 10).forEach((entry) => {
+  uiState.log.slice(0, 10).forEach((entry) => {
     const row = document.createElement("div");
     row.className = `log-item ${entry.tone}`;
     row.textContent = `Day ${entry.day}: ${entry.text}`;
@@ -240,24 +271,24 @@ function render() {
 }
 
 function openingChoice(choice) {
-  state.openingComplete = true;
+  state.flags.openingComplete = true;
   let resultText = "";
   let tone = "";
 
   if (choice === "Talk to Cousin") {
-    state.activeCategory = "people";
-    state.activeSubmenu = "Cousin";
+    uiState.activeCategory = "people";
+    uiState.activeSubmenu = "Cousin";
     state.reputation = clamp(state.reputation + 1, 0, 100);
     resultText = "Your cousin lays out the rules: thirty days, no excuses, make something move.";
     tone = "good";
   } else if (choice === "Wash Up") {
-    state.activeCategory = "rest";
-    state.activeSubmenu = "Recover";
+    uiState.activeCategory = "rest";
+    uiState.activeSubmenu = "Recover";
     state.health = clamp(state.health + 4, 0, 100);
     resultText = "Cold water wakes you up. You breathe, focus, and plan your first day.";
   } else {
-    state.activeCategory = "move";
-    state.activeSubmenu = "Step Outside";
+    uiState.activeCategory = "move";
+    uiState.activeSubmenu = "Step Outside";
     state.heat = clamp(state.heat + 1, 0, 100);
     resultText = "You step outside and scan the block. The city already feels expensive.";
   }
@@ -266,9 +297,9 @@ function openingChoice(choice) {
 }
 
 function handleSubmenuAction(action) {
-  if (state.awaitingContinue) return;
+  if (uiState.awaitingContinue) return;
 
-  if (!state.openingComplete) {
+  if (!state.flags.openingComplete) {
     addLog("Handle your opening moment first.");
     render();
     return;
@@ -341,7 +372,7 @@ function handleSubmenuAction(action) {
       break;
     case "Sleep":
       state.day += 1;
-      state.time = "Morning";
+      state.timeOfDay = "Morning";
       state.health = clamp(state.health + 12, 0, 100);
       resolveAction("You sleep hard and recover for the next push.", "good", { skipAdvanceTime: true });
       break;
@@ -360,12 +391,12 @@ function handleSubmenuAction(action) {
 
 function endOfActionCheck() {
   if (state.health <= 0) {
-    state.gameOver = true;
+    uiState.gameOver = true;
     return endGame("You couldn't survive the streets. Your run ends cold.");
   }
 
   if (state.day > GAME_DAYS) {
-    state.gameOver = true;
+    uiState.gameOver = true;
     return endGame(buildOutcome());
   }
 
@@ -375,15 +406,15 @@ function endOfActionCheck() {
 function resolveAction(text, tone = "", options = {}) {
   const { skipAdvanceTime = false } = options;
   addLog(text, tone);
-  state.pendingResult = { text, tone };
-  state.awaitingContinue = true;
+  uiState.pendingResult = { text, tone };
+  uiState.awaitingContinue = true;
   if (!skipAdvanceTime) advanceTime();
   endOfActionCheck();
 }
 
 function clearResultAndReturnToHub() {
-  state.awaitingContinue = false;
-  state.pendingResult = null;
+  uiState.awaitingContinue = false;
+  uiState.pendingResult = null;
   render();
 }
 
@@ -419,22 +450,8 @@ function endGame(summaryText) {
 }
 
 function startGame(name) {
-  state.playerName = name || "Rookie";
-  state.day = 1;
-  state.time = "Morning";
-  state.money = 200;
-  state.health = 100;
-  state.reputation = 0;
-  state.heat = 0;
-  state.location = "Cousin's Apt";
-  state.activeCategory = "people";
-  state.activeSubmenu = "Cousin";
-  state.openingComplete = false;
-  state.inventory = {};
-  state.log = [];
-  state.awaitingContinue = false;
-  state.pendingResult = null;
-  state.gameOver = false;
+  Object.assign(state, createOpeningState(), { playerName: name || "Rookie" });
+  Object.assign(uiState, createUiState());
 
   el.startScreen.classList.add("hidden");
   el.endScreen.classList.add("hidden");
@@ -458,9 +475,9 @@ function loadGame() {
 
   try {
     const loaded = JSON.parse(raw);
-    Object.assign(state, loaded);
-    state.awaitingContinue = Boolean(state.awaitingContinue);
-    state.pendingResult = state.pendingResult || null;
+    if (!loaded.timeOfDay && loaded.time) loaded.timeOfDay = loaded.time;
+    Object.assign(state, createOpeningState(), loaded);
+    Object.assign(uiState, createUiState());
     el.startScreen.classList.add("hidden");
     el.endScreen.classList.add("hidden");
     el.gameScreen.classList.remove("hidden");
