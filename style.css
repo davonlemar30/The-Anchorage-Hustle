@@ -59,8 +59,9 @@ input {
   border: 1px solid #445168;
   color: var(--text);
   background: #1f2733;
-  border-radius: 8px;
-  padding: 9px 11px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 42px;
   cursor: pointer;
 }
 .btn:hover { filter: brightness(1.1); }
@@ -97,15 +98,16 @@ input {
 
 .hud-bar {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   position: sticky;
   top: 8px;
-  z-index: 10;
+  z-index: 20;
 }
 
 .hud-primary { font-weight: 700; }
 .hud-stats { color: var(--muted); font-size: 0.95rem; }
-.hud-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.hud-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.hud-actions .btn { flex: 1 1 96px; }
 
 .hud-grid {
   display: grid;
@@ -115,6 +117,17 @@ input {
 
 .left-stack, .right-stack { display: grid; gap: 12px; align-content: start; }
 .left-panel { padding: 10px; }
+
+.mobile-pane-switch {
+  display: none;
+  gap: 6px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.mobile-pane-btn.active {
+  background: #1d324a;
+  border-color: var(--accent);
+}
 
 .nav-rail, .submenu-list {
   display: grid;
@@ -127,8 +140,9 @@ input {
   border: 1px solid #384252;
   background: #11161d;
   color: var(--text);
-  border-radius: 8px;
-  padding: 9px 10px;
+  border-radius: 10px;
+  padding: 11px 12px;
+  min-height: 44px;
   cursor: pointer;
 }
 
@@ -149,7 +163,7 @@ input {
 }
 
 .scene-panel {
-  min-height: 270px;
+  min-height: 250px;
   background:
     linear-gradient(180deg, rgba(7, 10, 15, 0.8), rgba(11, 15, 22, 0.94)),
     radial-gradient(circle at 75% 20%, rgba(255, 228, 173, 0.14), transparent 32%);
@@ -179,12 +193,12 @@ input {
 }
 
 .story-panel {
-  min-height: 250px;
+  min-height: 220px;
 }
 
 .story-text {
   margin: 0;
-  line-height: 1.6;
+  line-height: 1.55;
   white-space: pre-line;
 }
 
@@ -236,5 +250,139 @@ input {
 }
 
 @media (max-width: 880px) {
+  .app {
+    padding: 10px;
+    margin: 4px auto;
+  }
+
+  .hud-shell {
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .hud-shell::before { display: none; }
+
   .hud-grid { grid-template-columns: 1fr; }
+
+  .right-stack {
+    order: 1;
+    gap: 10px;
+  }
+
+  .left-stack {
+    order: 2;
+    gap: 10px;
+  }
+
+  .story-panel { order: 1; }
+  .scene-panel { order: 2; min-height: 0; }
+  .system-panel { order: 4; }
+
+  .mobile-pane-switch {
+    display: grid;
+    position: sticky;
+    top: 156px;
+    z-index: 15;
+  }
+
+  .left-stack.mobile-options #navSection { display: none; }
+  .left-stack.mobile-nav #optionsSection { display: none; }
+
+  .hud-bar {
+    top: 0;
+    border-radius: 10px;
+    gap: 6px;
+  }
+
+  .hud-primary {
+    font-size: 0.95rem;
+    line-height: 1.3;
+  }
+
+  .hud-stats {
+    font-size: 0.86rem;
+    line-height: 1.25;
+  }
+
+  .hud-actions .btn {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+
+  .scene-art-frame {
+    height: clamp(136px, 27vh, 190px);
+  }
+
+  .scene-copy,
+  .story-text {
+    font-size: 0.97rem;
+  }
+
+  .choice-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .choice-btn,
+  .submenu-btn {
+    font-size: 1rem;
+    min-height: 48px;
+  }
+
+  .nav-rail {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(128px, 1fr);
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding-bottom: 2px;
+  }
+
+  .nav-btn {
+    min-height: 46px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .submenu-list {
+    grid-template-columns: 1fr;
+  }
+
+  .event-log { max-height: 180px; }
+}
+
+@media (max-width: 430px) {
+  .screen { gap: 10px; }
+
+  .card {
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  h1 { font-size: 1.8rem; }
+  h3 { font-size: 1.04rem; }
+
+  .hud-primary { font-size: 0.9rem; }
+  .hud-stats { font-size: 0.8rem; }
+
+  .mobile-pane-switch { top: 146px; }
+}
+
+@media (max-width: 880px) and (orientation: landscape) {
+  .hud-grid { gap: 10px; }
+
+  .hud-actions .btn {
+    flex: 1 1 110px;
+    min-height: 38px;
+  }
+
+  .right-stack {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "story scene"
+      "journal journal";
+  }
+
+  .story-panel { grid-area: story; }
+  .scene-panel { grid-area: scene; }
+  .system-panel { grid-area: journal; }
 }
