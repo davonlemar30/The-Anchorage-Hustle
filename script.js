@@ -82,6 +82,7 @@ function createUiState() {
   return {
     activeCategory: "people",
     activeSubmenu: "Cousin",
+    mobileLeftPane: "nav",
     log: [],
     awaitingContinue: false,
     pendingResult: null,
@@ -104,6 +105,9 @@ const el = {
   navRail: document.getElementById("navRail"),
   submenuTitle: document.getElementById("submenuTitle"),
   submenuPanel: document.getElementById("submenuPanel"),
+  leftStack: document.querySelector(".left-stack"),
+  mobileNavTab: document.getElementById("mobileNavTab"),
+  mobileOptionsTab: document.getElementById("mobileOptionsTab"),
   sceneArt: document.getElementById("sceneArt"),
   sceneText: document.getElementById("sceneText"),
   storyTitle: document.getElementById("storyTitle"),
@@ -820,6 +824,9 @@ function renderNav() {
       if (uiState.awaitingContinue) return;
       uiState.activeCategory = category.key;
       uiState.activeSubmenu = submenuByCategory[category.key][0];
+      if (window.matchMedia("(max-width: 880px)").matches) {
+        uiState.mobileLeftPane = "options";
+      }
       render();
     });
     el.navRail.appendChild(btn);
@@ -897,6 +904,16 @@ function renderDetailPanel() {
   });
 }
 
+function renderMobileControls() {
+  if (!el.leftStack || !el.mobileNavTab || !el.mobileOptionsTab) return;
+
+  const activePane = uiState.mobileLeftPane === "options" ? "options" : "nav";
+  el.leftStack.classList.toggle("mobile-options", activePane === "options");
+  el.leftStack.classList.toggle("mobile-nav", activePane === "nav");
+  el.mobileNavTab.classList.toggle("active", activePane === "nav");
+  el.mobileOptionsTab.classList.toggle("active", activePane === "options");
+}
+
 function render() {
   renderHud();
   renderScene();
@@ -904,6 +921,7 @@ function render() {
   renderSubmenu();
   renderStory();
   renderDetailPanel();
+  renderMobileControls();
 }
 
 function moveToLocation(locationId, text) {
@@ -1121,6 +1139,14 @@ el.saveBtn.addEventListener("click", saveGame);
 el.loadBtn.addEventListener("click", loadGame);
 el.restartBtn.addEventListener("click", () => startGame(state.playerName || "Rookie"));
 el.playAgainBtn.addEventListener("click", () => startGame(state.playerName || "Rookie"));
+el.mobileNavTab?.addEventListener("click", () => {
+  uiState.mobileLeftPane = "nav";
+  renderMobileControls();
+});
+el.mobileOptionsTab?.addEventListener("click", () => {
+  uiState.mobileLeftPane = "options";
+  renderMobileControls();
+});
 
 el.playerName.addEventListener("keydown", (event) => {
   if (event.key === "Enter") el.startGameBtn.click();

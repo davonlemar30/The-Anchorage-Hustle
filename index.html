@@ -29,11 +29,16 @@
 
         <div class="hud-grid">
           <aside class="left-stack">
-            <section class="card left-panel">
+            <div class="mobile-pane-switch" role="tablist" aria-label="Control panels">
+              <button id="mobileNavTab" class="btn ghost mobile-pane-btn active" type="button">Navigation</button>
+              <button id="mobileOptionsTab" class="btn ghost mobile-pane-btn" type="button">Options</button>
+            </div>
+
+            <section id="navSection" class="card left-panel">
               <h3>Navigation</h3>
               <div id="navRail" class="nav-rail"></div>
             </section>
-            <section class="card left-panel">
+            <section id="optionsSection" class="card left-panel">
               <h3 id="submenuTitle">Options</h3>
               <div id="submenuPanel" class="submenu-list"></div>
             </section>
