@@ -83,6 +83,25 @@ input {
   position: relative;
 }
 
+.game-layout {
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.story-column,
+.desktop-column {
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.desktop-panel { display: none; }
+
+.desktop-column .desktop-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .hud-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -240,6 +259,7 @@ input {
   border: 1px solid #293545;
   border-radius: 10px;
   padding: 8px;
+  min-height: 0;
 }
 
 .log-item {
@@ -303,9 +323,39 @@ input {
   }
 
   .game-shell {
-    max-width: 820px;
-    margin: 0 auto;
-    height: min(96dvh, 900px);
+    max-width: none;
+    margin: 0;
+    height: min(96dvh, 920px);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .game-layout {
+    grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.35fr) minmax(260px, 1fr);
+    align-items: stretch;
+  }
+
+  .story-column {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .desktop-column {
+    grid-template-rows: minmax(220px, 0.9fr) minmax(0, 1fr);
+  }
+
+  .desktop-panel {
+    display: grid;
+    min-height: 0;
+  }
+
+  .desktop-actions-panel .overlay-list,
+  .desktop-column .event-log,
+  .desktop-column .scene-copy {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .quick-bar {
+    display: none;
   }
 
   .overlay-panel {

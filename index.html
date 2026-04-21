@@ -23,17 +23,49 @@
           <button id="menuToggleBtn" class="btn ghost menu-toggle" type="button">Menu</button>
         </header>
 
-        <section class="card story-panel">
-          <h3 id="storyTitle">Opening</h3>
-          <p id="storyText" class="story-text"></p>
-          <div id="choiceButtons" class="choice-row"></div>
-        </section>
+        <section class="game-layout">
+          <section class="card desktop-panel desktop-actions-panel" aria-label="Desktop actions panel">
+            <header class="overlay-header">
+              <h3 id="desktopActionsTitle">Actions</h3>
+              <button id="desktopActionsBackBtn" class="btn ghost" type="button">Back</button>
+            </header>
+            <div id="desktopActionsPanel" class="overlay-list"></div>
+          </section>
 
-        <nav class="quick-bar card" aria-label="Quick actions">
-          <button id="openActionsBtn" class="btn primary" type="button">Actions</button>
-          <button id="openJournalBtn" class="btn" type="button">Journal</button>
-          <button id="openSceneBtn" class="btn" type="button">Scene</button>
-        </nav>
+          <section class="story-column">
+            <section class="card story-panel">
+              <h3 id="storyTitle">Opening</h3>
+              <p id="storyText" class="story-text"></p>
+              <div id="choiceButtons" class="choice-row"></div>
+            </section>
+
+            <nav class="quick-bar card" aria-label="Quick actions">
+              <button id="openActionsBtn" class="btn primary" type="button">Actions</button>
+              <button id="openJournalBtn" class="btn" type="button">Journal</button>
+              <button id="openSceneBtn" class="btn" type="button">Scene</button>
+            </nav>
+          </section>
+
+          <section class="desktop-column">
+            <section class="card desktop-panel" aria-label="Desktop scene panel">
+              <header class="overlay-header"><h3>Scene</h3></header>
+              <figure class="scene-art-frame">
+                <img
+                  id="desktopSceneArt"
+                  class="scene-art-image"
+                  src="assets/cousins-apt-placeholder.svg"
+                  alt="Gritty pixel-style view of cousin's apartment in Anchorage."
+                />
+              </figure>
+              <p id="desktopSceneText" class="scene-copy"></p>
+            </section>
+
+            <section class="card desktop-panel" aria-label="Desktop journal panel">
+              <header class="overlay-header"><h3>Journal</h3></header>
+              <div id="desktopDetailPanel" class="event-log"></div>
+            </section>
+          </section>
+        </section>
 
         <section id="actionsSheet" class="overlay hidden" aria-hidden="true">
           <div class="overlay-backdrop" data-close-overlay="actions"></div>
