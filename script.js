@@ -311,6 +311,7 @@ function createUiState() {
 
 const state = createOpeningState();
 const uiState = createUiState();
+const desktopLayoutQuery = window.matchMedia("(min-width: 900px)");
 
 const el = {
   startScreen: document.getElementById("startScreen"),
@@ -328,6 +329,9 @@ const el = {
   actionsTitle: document.getElementById("actionsTitle"),
   actionsPanel: document.getElementById("actionsPanel"),
   actionsBackBtn: document.getElementById("actionsBackBtn"),
+  desktopActionsTitle: document.getElementById("desktopActionsTitle"),
+  desktopActionsPanel: document.getElementById("desktopActionsPanel"),
+  desktopActionsBackBtn: document.getElementById("desktopActionsBackBtn"),
   closeActionsBtn: document.getElementById("closeActionsBtn"),
   journalOverlay: document.getElementById("journalOverlay"),
   closeJournalBtn: document.getElementById("closeJournalBtn"),
@@ -337,11 +341,14 @@ const el = {
   closeMenuBtn: document.getElementById("closeMenuBtn"),
   sceneArt: document.getElementById("sceneArt"),
   sceneText: document.getElementById("sceneText"),
+  desktopSceneArt: document.getElementById("desktopSceneArt"),
+  desktopSceneText: document.getElementById("desktopSceneText"),
   storyTitle: document.getElementById("storyTitle"),
   storyText: document.getElementById("storyText"),
   choiceButtons: document.getElementById("choiceButtons"),
   detailTitle: document.getElementById("detailTitle"),
   detailPanel: document.getElementById("detailPanel"),
+  desktopDetailPanel: document.getElementById("desktopDetailPanel"),
   saveBtn: document.getElementById("saveBtn"),
   loadBtn: document.getElementById("loadBtn"),
   restartBtn: document.getElementById("restartBtn"),
@@ -821,13 +828,18 @@ function advanceTimeBy(slots = 1) {
   }
 }
 
-function clampBoundedStats() {
-  state.money = Math.max(0, state.money);
-  state.health = clamp(state.health, 0, 100);
-  state.heat = clamp(state.heat, 0, 100);
-  state.reputation = clamp(state.reputation, -10, 10);
-  state.relationships.dre_trust = clamp(state.relationships.dre_trust || 0, 0, 5);
-  state.relationships.mina_trust = clamp(state.relationships.mina_trust || 0, 0, 5);
+function clampBoundedStats(target = state) {
+  target.money = Math.max(0, target.money || 0);
+  target.health = clamp(target.health || 0, 0, 100);
+  target.heat = clamp(target.heat || 0, 0, 100);
+  target.reputation = clamp(target.reputation || 0, -10, 10);
+  target.relationships = target.relationships || {};
+  target.relationships.dre_trust = clamp(target.relationships.dre_trust || 0, 0, 5);
+  target.relationships.mina_trust = clamp(target.relationships.mina_trust || 0, 0, 5);
+}
+
+function isDesktopLayout() {
+  return desktopLayoutQuery.matches;
 }
 
 function applyUnlock(unlock) {
@@ -1066,6 +1078,7 @@ function closeAllOverlays() {
 }
 
 function openOverlay(name) {
+  if (isDesktopLayout() && name !== "menu") return;
   closeAllOverlays();
   if (uiState.overlays[name] !== undefined) uiState.overlays[name] = true;
   if (name === "actions") uiState.actionPath = [];
@@ -1092,9 +1105,17 @@ function renderHud() {
 function renderScene() {
   const scene = LOCATION_DEFS[state.location] || LOCATION_DEFS.cousins_apt;
   const profile = locationProfile(state.location);
-  el.sceneArt.src = scene.art;
-  el.sceneArt.alt = scene.alt;
-  el.sceneText.textContent = `${scene.text}\n\nRole: ${profile.identity}\nRisk profile: ${profile.risk}`;
+  const sceneCopy = `${scene.text}\n\nRole: ${profile.identity}\nRisk profile: ${profile.risk}`;
+
+  [el.sceneArt, el.desktopSceneArt].forEach((artEl) => {
+    if (!artEl) return;
+    artEl.src = scene.art;
+    artEl.alt = scene.alt;
+  });
+  [el.sceneText, el.desktopSceneText].forEach((textEl) => {
+    if (!textEl) return;
+    textEl.textContent = sceneCopy;
+  });
 }
 
 function getActionNode() {
@@ -1179,20 +1200,18 @@ function getMarketBoardEntries() {
   return entries;
 }
 
-function renderActionsMenu() {
+function buildActionButtons(targetPanel, closeAfterSelection) {
   const node = getActionNode();
   const atRoot = uiState.actionPath.length === 0;
   const pathKey = uiState.actionPath.join(">");
-  el.actionsTitle.textContent = atRoot ? "Actions" : uiState.actionPath.join(" › ");
-  el.actionsBackBtn.disabled = atRoot;
-  el.actionsPanel.innerHTML = "";
+  targetPanel.innerHTML = "";
 
   if (pathKey === "Travel>Local Map" || pathKey === "Travel>Destinations") {
     const mapNote = document.createElement("div");
     mapNote.className = "travel-note";
     const current = LOCATION_DEFS[state.location];
     mapNote.innerHTML = `<strong>Current:</strong> ${current?.name || state.location} · <span class="muted">${current?.district || "Anchorage"}</span>`;
-    el.actionsPanel.appendChild(mapNote);
+    targetPanel.appendChild(mapNote);
 
     if (pathKey === "Travel>Local Map") {
       const districtGroups = {};
@@ -1205,16 +1224,16 @@ function renderActionsMenu() {
         const header = document.createElement("div");
         header.className = "travel-group";
         header.textContent = district;
-        el.actionsPanel.appendChild(header);
+        targetPanel.appendChild(header);
         locationIds.forEach((locationId) => {
-          el.actionsPanel.appendChild(buildDestinationButton(locationId));
+          targetPanel.appendChild(buildDestinationButton(locationId, closeAfterSelection));
         });
       });
       return;
     }
 
     allLocationIds().forEach((locationId) => {
-      el.actionsPanel.appendChild(buildDestinationButton(locationId));
+      targetPanel.appendChild(buildDestinationButton(locationId, closeAfterSelection));
     });
     return;
   }
@@ -1231,7 +1250,7 @@ function renderActionsMenu() {
     const blurb = document.createElement("div");
     blurb.className = "travel-note";
     blurb.innerHTML = `<strong>${locationName(state.location)} · Risk ${profile.risk}</strong><br><span class="muted">${profile.identity}</span>`;
-    el.actionsPanel.appendChild(blurb);
+    targetPanel.appendChild(blurb);
   }
 
   entries.forEach((entry) => {
@@ -1244,7 +1263,7 @@ function renderActionsMenu() {
       const currentNode = getActionNode();
       if (Array.isArray(currentNode)) {
         handleSubmenuAction(entry.id);
-        closeOverlay("actions");
+        if (closeAfterSelection) closeOverlay("actions");
         return;
       }
 
@@ -1257,7 +1276,7 @@ function renderActionsMenu() {
         }
         if (nextNode.length === 1) {
           handleSubmenuAction(nextNode[0]);
-          closeOverlay("actions");
+          if (closeAfterSelection) closeOverlay("actions");
           return;
         }
         uiState.actionPath = [...uiState.actionPath, entry.id];
@@ -1270,21 +1289,32 @@ function renderActionsMenu() {
         return;
       }
       handleSubmenuAction(entry.id);
-      closeOverlay("actions");
+      if (closeAfterSelection) closeOverlay("actions");
     });
-    el.actionsPanel.appendChild(btn);
+    targetPanel.appendChild(btn);
     if (entry.hint) {
       const hint = document.createElement("div");
       hint.className = "muted";
       hint.style.fontSize = "0.82rem";
       hint.style.padding = "0 2px 4px";
       hint.textContent = entry.hint;
-      el.actionsPanel.appendChild(hint);
+      targetPanel.appendChild(hint);
     }
   });
 }
 
-function buildDestinationButton(locationId) {
+function renderActionsMenu() {
+  const atRoot = uiState.actionPath.length === 0;
+  const title = atRoot ? "Actions" : uiState.actionPath.join(" › ");
+  if (el.actionsTitle) el.actionsTitle.textContent = title;
+  if (el.desktopActionsTitle) el.desktopActionsTitle.textContent = title;
+  if (el.actionsBackBtn) el.actionsBackBtn.disabled = atRoot;
+  if (el.desktopActionsBackBtn) el.desktopActionsBackBtn.disabled = atRoot;
+  if (el.actionsPanel) buildActionButtons(el.actionsPanel, true);
+  if (el.desktopActionsPanel) buildActionButtons(el.desktopActionsPanel, false);
+}
+
+function buildDestinationButton(locationId, closeAfterSelection = true) {
   const def = LOCATION_DEFS[locationId];
   const unlocked = !!state.unlocks.locations[locationId];
   const isCurrent = state.location === locationId;
@@ -1300,16 +1330,16 @@ function buildDestinationButton(locationId) {
     if (uiState.awaitingContinue) return;
     if (isCurrent) {
       resolveAction(`You're already at ${def.name}.`, "", { skipAdvanceTime: true });
-      closeOverlay("actions");
+      if (closeAfterSelection) closeOverlay("actions");
       return;
     }
     if (!unlocked) {
       resolveAction(`${def.name} is locked. Hint: ${def.lockHint}`, "bad", { skipAdvanceTime: true });
-      closeOverlay("actions");
+      if (closeAfterSelection) closeOverlay("actions");
       return;
     }
     moveToLocation(locationId, `You travel to ${def.name}. ${def.description}`);
-    closeOverlay("actions");
+    if (closeAfterSelection) closeOverlay("actions");
   });
   return btn;
 }
@@ -1342,27 +1372,38 @@ function renderStory() {
 
   el.storyTitle.textContent = "Street Feed";
   const recent = uiState.log[0]?.text || "Tap Actions to make your first move.";
-  el.storyText.textContent = `${recent}\n\nUse the quick bar for Actions, Journal, and Scene.`;
+  const hubHint = isDesktopLayout()
+    ? "Use the command center panels to plan actions, monitor scene intel, and review your journal."
+    : "Use the quick bar for Actions, Journal, and Scene.";
+  el.storyText.textContent = `${recent}\n\n${hubHint}`;
   el.choiceButtons.innerHTML = "";
 }
 
 function renderDetailPanel() {
   el.detailTitle.textContent = "Journal";
-  el.detailPanel.innerHTML = "";
+  [el.detailPanel, el.desktopDetailPanel].forEach((panel) => {
+    if (panel) panel.innerHTML = "";
+  });
 
   if (!uiState.log.length) {
-    const row = document.createElement("div");
-    row.className = "log-item";
-    row.textContent = "No events yet. Your first move will set the tone.";
-    el.detailPanel.appendChild(row);
+    [el.detailPanel, el.desktopDetailPanel].forEach((panel) => {
+      if (!panel) return;
+      const row = document.createElement("div");
+      row.className = "log-item";
+      row.textContent = "No events yet. Your first move will set the tone.";
+      panel.appendChild(row);
+    });
     return;
   }
 
   uiState.log.slice(0, 10).forEach((entry) => {
-    const row = document.createElement("div");
-    row.className = `log-item ${entry.tone}`;
-    row.textContent = `Day ${entry.day}: ${entry.text}`;
-    el.detailPanel.appendChild(row);
+    [el.detailPanel, el.desktopDetailPanel].forEach((panel) => {
+      if (!panel) return;
+      const row = document.createElement("div");
+      row.className = `log-item ${entry.tone}`;
+      row.textContent = `Day ${entry.day}: ${entry.text}`;
+      panel.appendChild(row);
+    });
   });
 }
 
@@ -1376,7 +1417,7 @@ function renderOverlays() {
 
   Object.entries(overlays).forEach(([key, node]) => {
     if (!node) return;
-    const visible = !!uiState.overlays[key];
+    const visible = isDesktopLayout() && key !== "menu" ? false : !!uiState.overlays[key];
     node.classList.toggle("hidden", !visible);
     node.setAttribute("aria-hidden", String(!visible));
   });
@@ -1606,7 +1647,11 @@ function handleSubmenuAction(action) {
       resolveAction(`Street pressure reads at Heat ${state.heat} with Rep ${state.reputation}. Move accordingly.`, "", { skipAdvanceTime: true });
       break;
     case "Journal":
-      openOverlay("journal");
+      if (isDesktopLayout()) {
+        resolveAction("Journal is open in your right-side command panel.", "", { skipAdvanceTime: true });
+      } else {
+        openOverlay("journal");
+      }
       break;
     case "Rest Up":
       state.health += 12;
@@ -1711,7 +1756,7 @@ function sanitizeLoadedState(loaded) {
   if (!TIME_SLOTS.includes(normalized.timeOfDay)) normalized.timeOfDay = "Morning";
   if (!LOCATION_DEFS[normalized.location]) normalized.location = "cousins_apt";
 
-  clampBoundedStats();
+  clampBoundedStats(normalized);
   return normalized;
 }
 
@@ -1767,6 +1812,11 @@ el.actionsBackBtn?.addEventListener("click", () => {
   uiState.actionPath = uiState.actionPath.slice(0, -1);
   renderActionsMenu();
 });
+el.desktopActionsBackBtn?.addEventListener("click", () => {
+  if (!uiState.actionPath.length) return;
+  uiState.actionPath = uiState.actionPath.slice(0, -1);
+  renderActionsMenu();
+});
 el.closeActionsBtn?.addEventListener("click", () => closeOverlay("actions"));
 el.closeJournalBtn?.addEventListener("click", () => closeOverlay("journal"));
 el.closeSceneBtn?.addEventListener("click", () => closeOverlay("scene"));
@@ -1786,4 +1836,13 @@ document.querySelectorAll("[data-close-overlay]").forEach((node) => {
     const overlayName = node.getAttribute("data-close-overlay");
     if (overlayName) closeOverlay(overlayName);
   });
+});
+
+desktopLayoutQuery.addEventListener("change", () => {
+  if (isDesktopLayout()) {
+    uiState.overlays.actions = false;
+    uiState.overlays.journal = false;
+    uiState.overlays.scene = false;
+  }
+  render();
 });
