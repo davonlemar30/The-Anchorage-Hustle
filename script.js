@@ -23,14 +23,14 @@ const DRUGS = [
 ];
 
 const AREAS = [
-  { id: "north_star_lot", displayName: "North Star Lot", riskLevel: 1, policePressure: 1, rivalPressure: 0, marketBias: { weed: 0.85, shrooms: 0.9, xanax: 0.9 } },
-  { id: "spenard", displayName: "Spenard", riskLevel: 2, policePressure: 2, rivalPressure: 1, marketBias: { cocaine: 1.2, meth: 1.15, oxy: 1.12 } },
-  { id: "mountain_view", displayName: "Mountain View", riskLevel: 3, policePressure: 2, rivalPressure: 2, marketBias: { crack: 1.2, heroin: 1.16, fentanyl: 1.2 } },
-  { id: "downtown", displayName: "Downtown", riskLevel: 2, policePressure: 3, rivalPressure: 1, marketBias: { adderall: 1.17, cocaine: 1.22, mdma: 1.16 } },
-  { id: "muldoon", displayName: "Muldoon", riskLevel: 3, policePressure: 2, rivalPressure: 3, marketBias: { meth: 1.22, hydros: 1.17, lean: 1.15 } },
-  { id: "midtown", displayName: "Midtown", riskLevel: 2, policePressure: 2, rivalPressure: 1, marketBias: { adderall: 0.86, ritalin: 0.84, vyvanse: 0.82 } },
-  { id: "southside", displayName: "Southside", riskLevel: 1, policePressure: 1, rivalPressure: 1, marketBias: { shrooms: 1.15, lsd: 1.2, ecstasy: 1.14 } },
-  { id: "airport_industrial", displayName: "Airport / Industrial", riskLevel: 4, policePressure: 3, rivalPressure: 2, marketBias: { ketamine: 1.24, fentanyl: 1.26, rx_mix: 1.2 } },
+  { id: "north_star_lot", displayName: "North Star Lot", riskLevel: 1, policePressure: 1, rivalPressure: 0, marketBias: { weed: 0.85, shrooms: 0.9, xanax: 0.9 }, hint: "cheap street stock" },
+  { id: "spenard", displayName: "Spenard", riskLevel: 2, policePressure: 2, rivalPressure: 1, marketBias: { cocaine: 1.2, meth: 1.15, oxy: 1.12 }, hint: "powder demand" },
+  { id: "mountain_view", displayName: "Mountain View", riskLevel: 3, policePressure: 2, rivalPressure: 2, marketBias: { crack: 1.2, heroin: 1.16, fentanyl: 1.2 }, hint: "hard market" },
+  { id: "downtown", displayName: "Downtown", riskLevel: 2, policePressure: 3, rivalPressure: 1, marketBias: { adderall: 1.17, cocaine: 1.22, mdma: 1.16 }, hint: "club flips" },
+  { id: "muldoon", displayName: "Muldoon", riskLevel: 3, policePressure: 2, rivalPressure: 3, marketBias: { meth: 1.22, hydros: 1.17, lean: 1.15 }, hint: "rival corners" },
+  { id: "midtown", displayName: "Midtown", riskLevel: 2, policePressure: 2, rivalPressure: 1, marketBias: { adderall: 0.86, ritalin: 0.84, vyvanse: 0.82 }, hint: "pill discounts" },
+  { id: "southside", displayName: "Southside", riskLevel: 1, policePressure: 1, rivalPressure: 1, marketBias: { shrooms: 1.15, lsd: 1.2, ecstasy: 1.14 }, hint: "party crowd" },
+  { id: "airport_industrial", displayName: "Airport / Industrial", riskLevel: 4, policePressure: 3, rivalPressure: 2, marketBias: { ketamine: 1.24, fentanyl: 1.26, rx_mix: 1.2 }, hint: "high margin, high heat" },
 ];
 
 const UPGRADES = [
@@ -45,10 +45,9 @@ const GAME = {
   tick: 1,
   locationId: "north_star_lot",
   cash: 200,
-  bank: 0,
-  health: 100,
   heat: 0,
   rep: 0,
+  health: 100,
   maxCarry: 30,
   inventory: Object.fromEntries(DRUGS.map((drug) => [drug.id, 0])),
   prices: {},
@@ -65,7 +64,9 @@ const el = {
   marketTable: document.getElementById("marketTable"),
   travelList: document.getElementById("travelList"),
   holdings: document.getElementById("holdings"),
+  riskPreview: document.getElementById("riskPreview"),
   eventFeed: document.getElementById("eventFeed"),
+  assetsPanel: document.getElementById("assetsPanel"),
   upgrades: document.getElementById("upgrades"),
   robBtn: document.getElementById("robBtn"),
   loanBtn: document.getElementById("loanBtn"),
@@ -79,10 +80,11 @@ function rng(min, max) {
 }
 
 function weightedPick(entries) {
-  const total = entries.reduce((sum, e) => sum + e.weight, 0);
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.weight), 0);
+  if (total <= 0) return entries[0];
   let roll = Math.random() * total;
   for (const entry of entries) {
-    roll -= entry.weight;
+    roll -= Math.max(0, entry.weight);
     if (roll <= 0) return entry;
   }
   return entries[entries.length - 1];
@@ -92,12 +94,50 @@ function currentArea() {
   return AREAS.find((area) => area.id === GAME.locationId);
 }
 
+function nameOf(drugId) {
+  return DRUGS.find((drug) => drug.id === drugId)?.displayName || drugId;
+}
+
 function cargoCount() {
   return Object.values(GAME.inventory).reduce((sum, qty) => sum + qty, 0);
 }
 
+function sellPriceFor(drugId) {
+  const base = GAME.prices[drugId] || 0;
+  const markup = 1.03 + Math.min(0.14, GAME.rep * 0.003);
+  const taxPenalty = GAME.rook.taxActive && currentArea().riskLevel >= 3 ? 0.95 : 1;
+  return Math.max(1, Math.round(base * markup * taxPenalty));
+}
+
 function cargoValue() {
-  return DRUGS.reduce((sum, drug) => sum + (GAME.inventory[drug.id] || 0) * (GAME.prices[drug.id] || drug.minPrice), 0);
+  return DRUGS.reduce((sum, drug) => sum + (GAME.inventory[drug.id] || 0) * sellPriceFor(drug.id), 0);
+}
+
+function assetEffect(effectId) {
+  return GAME.assets.reduce((sum, assetId) => {
+    const asset = UPGRADES.find((item) => item.id === assetId);
+    return sum + (asset?.statEffects?.[effectId] || 0);
+  }, 0);
+}
+
+function rookPressureState() {
+  const area = currentArea();
+  const loadFactor = Math.floor(cargoValue() / 450);
+  const score = GAME.rook.attention + area.rivalPressure * 2 + loadFactor + Math.floor(GAME.rep / 4) - Math.floor(assetEffect("rookPressureMod") / 10);
+  if (score >= 15) return "Active";
+  if (score >= 8) return "Watching";
+  return "None";
+}
+
+function areaRiskLabel(level) {
+  if (level >= 4) return "High";
+  if (level >= 2) return "Medium";
+  return "Low";
+}
+
+function addFeed(text, tone = "") {
+  GAME.events.unshift({ text, tone, stamp: `D${GAME.day}T${GAME.tick}` });
+  GAME.events = GAME.events.slice(0, 70);
 }
 
 function generatePrices() {
@@ -108,23 +148,22 @@ function generatePrices() {
     const volatilitySwing = 1 + (Math.random() * 2 - 1) * drug.volatility;
     const locationBias = area.marketBias[drug.id] || 1;
     const minaDiscount = GAME.mina.trust >= 5 ? 0.95 : 1;
-    const rookTax = GAME.rook.taxActive && area.riskLevel >= 3 ? 1.08 : 1;
+    const rookTax = rookPressureState() === "Active" && area.riskLevel >= 3 ? 1.05 : 1;
     const scaled = base * volatilitySwing * locationBias * minaDiscount * rookTax;
     GAME.prices[drug.id] = Math.max(5, Math.round(scaled));
   }
 }
 
-function addFeed(text, tone = "") {
-  GAME.events.unshift({ text, tone });
-  GAME.events = GAME.events.slice(0, 60);
-}
-
-function stepTick(reason = "") {
+function incrementTick() {
   GAME.tick += 1;
   if (GAME.tick > 4) {
     GAME.tick = 1;
     GAME.day += 1;
   }
+}
+
+function stepTick(reason = "") {
+  incrementTick();
   GAME.flags.robbedRecently = false;
   if (reason) addFeed(reason);
   triggerRandomEvent("tick");
@@ -132,30 +171,43 @@ function stepTick(reason = "") {
   render();
 }
 
-function buyDrug(drugId) {
-  const price = GAME.prices[drugId];
-  if (GAME.cash < price) return addFeed("Not enough cash for that buy.", "bad");
-  if (cargoCount() >= GAME.maxCarry) return addFeed("You are maxed out on carry capacity.", "bad");
-  GAME.cash -= price;
-  GAME.inventory[drugId] += 1;
+function maxBuyQty(drugId) {
+  const freeSlots = GAME.maxCarry - cargoCount();
+  const byCash = Math.floor(GAME.cash / GAME.prices[drugId]);
+  return Math.max(0, Math.min(freeSlots, byCash));
+}
+
+function buyDrug(drugId, qty = 1) {
+  const amount = Math.max(1, qty);
+  const canBuy = maxBuyQty(drugId);
+  if (canBuy <= 0) return addFeed("Not enough room or cash for that buy.", "bad");
+  const actual = Math.min(amount, canBuy);
+  const totalCost = GAME.prices[drugId] * actual;
+  GAME.cash -= totalCost;
+  GAME.inventory[drugId] += actual;
+
   if (["mdma", "cocaine", "heroin", "fentanyl", "meth"].includes(drugId)) {
-    GAME.heat += 1;
-    GAME.rep += 1;
+    GAME.heat += Math.max(1, Math.floor(actual / 2));
+    GAME.rep += Math.max(1, Math.floor(actual / 2));
     GAME.rook.attention += 1;
   }
-  addFeed(`Bought 1 ${nameOf(drugId)} for $${price}.`, "good");
+
+  addFeed(`Bought ${actual} ${nameOf(drugId)} for $${totalCost}.`, "good");
   triggerRandomEvent("deal");
   render();
 }
 
-function sellDrug(drugId) {
-  if (!GAME.inventory[drugId]) return addFeed(`No ${nameOf(drugId)} in your pockets.`, "bad");
-  const salePrice = GAME.prices[drugId];
-  GAME.inventory[drugId] -= 1;
-  GAME.cash += salePrice;
-  GAME.rep += 1;
+function sellDrug(drugId, qty = 1) {
+  const owned = GAME.inventory[drugId] || 0;
+  if (!owned) return addFeed(`No ${nameOf(drugId)} in your pockets.`, "bad");
+  const actual = Math.min(Math.max(1, qty), owned);
+  const salePrice = sellPriceFor(drugId);
+  GAME.inventory[drugId] -= actual;
+  GAME.cash += salePrice * actual;
+  GAME.rep += Math.max(1, Math.floor(actual / 2));
   GAME.rook.attention += currentArea().riskLevel >= 3 ? 1 : 0;
-  addFeed(`Sold 1 ${nameOf(drugId)} for $${salePrice}.`, "good");
+
+  addFeed(`Sold ${actual} ${nameOf(drugId)} for $${salePrice * actual}.`, "good");
   triggerRandomEvent("deal");
   render();
 }
@@ -164,11 +216,7 @@ function travelTo(areaId) {
   if (areaId === GAME.locationId) return;
   const target = AREAS.find((area) => area.id === areaId);
   GAME.locationId = areaId;
-  GAME.tick += 1;
-  if (GAME.tick > 4) {
-    GAME.tick = 1;
-    GAME.day += 1;
-  }
+  incrementTick();
   GAME.heat = Math.max(0, GAME.heat + target.riskLevel - 1 - assetEffect("heatDeltaOnTravel"));
   GAME.rook.attention += target.rivalPressure;
   addFeed(`Moved to ${target.displayName}.`, "");
@@ -178,32 +226,33 @@ function travelTo(areaId) {
 }
 
 function robAction() {
+  const area = currentArea();
+  const pressure = rookPressureState();
+  const hotCarry = Math.floor(cargoValue() / 500);
+
   const entries = [
-    { id: "easy_win", weight: 26, run: () => { const cash = rng(60, 140); GAME.cash += cash; GAME.heat += 1; GAME.rep += 1; addFeed(`Rob hit clean. +$${cash}.`, "good"); } },
-    { id: "small_win", weight: 23, run: () => { const cash = rng(25, 70); GAME.cash += cash; GAME.heat += 2; addFeed(`You got a quick score: +$${cash}.`, "good"); } },
-    { id: "hurt", weight: 15 + GAME.heat, run: () => { const dmg = rng(8, 20); GAME.health -= dmg; GAME.heat += 1; addFeed(`Rob went bad. Took ${dmg} damage.`, "bad"); } },
-    { id: "nothing", weight: 18, run: () => addFeed("Target had nothing worth taking.") },
-    { id: "retaliation", weight: 8 + GAME.rook.attention, run: () => { GAME.health -= rng(6, 16); GAME.rook.attention += 3; GAME.heat += 3; addFeed("Wrong person. Retaliation hit you fast.", "bad"); } },
-    { id: "police", weight: 10 + currentArea().policePressure + GAME.heat, run: () => { GAME.heat += 4; addFeed("Cops lit up the block after that robbery.", "bad"); } },
+    { weight: Math.max(8, 30 - GAME.heat - area.policePressure), run: () => { const cash = rng(65, 145); GAME.cash += cash; GAME.heat += 1; GAME.rep += 1; addFeed(`Rob hit clean. +$${cash}.`, "good"); } },
+    { weight: 18, run: () => { const cash = rng(20, 65); GAME.cash += cash; GAME.heat += 2; addFeed(`Quick score landed: +$${cash}.`, "good"); } },
+    { weight: 10 + GAME.heat + area.policePressure + hotCarry, run: () => { const dmg = rng(8, 20); GAME.health -= dmg; GAME.heat += 2; addFeed(`Rob went bad. Took ${dmg} damage.`, "bad"); } },
+    { weight: 12 + area.rivalPressure, run: () => addFeed("Target had nothing worth taking.") },
+    { weight: pressure === "Active" ? 13 : 4, run: () => { GAME.health -= rng(6, 16); GAME.rook.attention += 3; GAME.heat += 3; addFeed("Wrong person. Retaliation hit you fast.", "bad"); } },
+    { weight: 10 + GAME.heat + area.policePressure * 2, run: () => { GAME.heat += 4; addFeed("Cops lit up the block after that robbery.", "bad"); } },
   ];
-  const result = weightedPick(entries);
+
+  weightedPick(entries).run();
   GAME.flags.robbedRecently = true;
-  result.run();
   triggerRandomEvent("rob");
   render();
 }
 
 function takeDreLoan() {
-  if (GAME.dre.loanOutstanding > 0) {
-    addFeed("Dre says clear your current note first.", "bad");
-    return;
-  }
+  if (GAME.dre.loanOutstanding > 0) return addFeed("Dre says clear your current note first.", "bad");
   const amount = 400;
   GAME.cash += amount;
   GAME.dre.loanOutstanding = Math.round(amount * 1.2);
   GAME.dre.deadlineDay = GAME.day + 5;
   GAME.dre.trust += 1;
-  addFeed(`Dre fronts you $${amount}. Owe $${GAME.dre.loanOutstanding} by day ${GAME.dre.deadlineDay}.`, "");
+  addFeed(`Dre fronts you $${amount}. Owe $${GAME.dre.loanOutstanding} by day ${GAME.dre.deadlineDay}.`);
   render();
 }
 
@@ -220,17 +269,6 @@ function repayDre() {
   render();
 }
 
-function nameOf(drugId) {
-  return DRUGS.find((drug) => drug.id === drugId)?.displayName || drugId;
-}
-
-function assetEffect(effectId) {
-  return GAME.assets.reduce((sum, assetId) => {
-    const asset = UPGRADES.find((item) => item.id === assetId);
-    return sum + (asset?.statEffects?.[effectId] || 0);
-  }, 0);
-}
-
 function maybeBuyUpgrade(upgradeId) {
   const upgrade = UPGRADES.find((item) => item.id === upgradeId);
   if (!upgrade || GAME.assets.includes(upgradeId)) return;
@@ -244,9 +282,13 @@ function maybeBuyUpgrade(upgradeId) {
 }
 
 function triggerRandomEvent(source) {
+  if (Math.random() > 0.62) return;
+
   const area = currentArea();
+  const pressure = rookPressureState();
   const loadedValue = cargoValue();
-  const rookHigh = GAME.rook.attention + area.rivalPressure;
+  const carryRisk = Math.floor(loadedValue / 450);
+  const robbedFactor = GAME.flags.robbedRecently ? 4 : 0;
 
   if (GAME.dre.loanOutstanding > 0 && GAME.day > GAME.dre.deadlineDay) {
     const penalty = Math.min(120, GAME.cash);
@@ -254,62 +296,39 @@ function triggerRandomEvent(source) {
     GAME.dre.trust -= 2;
     GAME.rook.attention += 2;
     GAME.dre.deadlineDay = GAME.day + 2;
-    addFeed(`Dre collected $${penalty} and extended the deadline. He's losing trust.`, "bad");
+    addFeed(`Dre collected $${penalty} and extended your deadline.`, "bad");
   }
 
-  const baseEvents = [
+  const pool = [
     {
       id: "police_attention",
-      weight: 6 + GAME.heat + area.policePressure + Math.floor(loadedValue / 600),
+      weight: 5 + GAME.heat + area.policePressure + robbedFactor + carryRisk,
       run: () => {
-        const hit = rng(2, 6);
-        GAME.heat += hit;
-        GAME.cash = Math.max(0, GAME.cash - rng(10, 45));
-        addFeed("Police pressure spikes. You pay small losses and keep moving.", "bad");
+        GAME.heat += rng(2, 5);
+        const fine = rng(10, 45);
+        GAME.cash = Math.max(0, GAME.cash - fine);
+        addFeed(`Police attention spikes. Burned $${fine} staying mobile.`, "bad");
       },
     },
     {
       id: "mugging_attempt",
-      weight: 4 + area.riskLevel + Math.floor(loadedValue / 700),
+      weight: 4 + area.riskLevel + carryRisk,
       run: () => {
-        const loss = rng(15, 90);
-        if (Math.random() < (assetEffect("muggingDefense") / 100)) {
-          addFeed("Crew muscle scared off a mugging attempt.", "good");
-          return;
-        }
+        if (Math.random() < assetEffect("muggingDefense") / 100) return addFeed("Crew muscle scared off a mugging attempt.", "good");
+        const loss = rng(20, 95);
         GAME.cash = Math.max(0, GAME.cash - loss);
-        GAME.health -= rng(4, 14);
-        addFeed(`Mugging attempt lands. You lose $${loss}.`, "bad");
-      },
-    },
-    {
-      id: "good_deal",
-      weight: 8 + GAME.mina.trust + GAME.mina.dealChanceBonus,
-      run: () => {
-        const pick = DRUGS[rng(0, DRUGS.length - 1)];
-        const discount = Math.round(GAME.prices[pick.id] * 0.25);
-        GAME.prices[pick.id] = Math.max(5, GAME.prices[pick.id] - discount);
-        GAME.mina.trust += 1;
-        addFeed(`Mina tips a deal: ${pick.displayName} down $${discount} this stop.`, "good");
-      },
-    },
-    {
-      id: "dry_supply",
-      weight: 7,
-      run: () => {
-        const pick = DRUGS[rng(0, DRUGS.length - 1)];
-        GAME.prices[pick.id] = Math.round(GAME.prices[pick.id] * 1.2);
-        addFeed(`Dry supply: ${pick.displayName} spikes in ${area.displayName}.`, "bad");
+        GAME.health -= rng(3, 12);
+        addFeed(`Mugging attempt lands. Lost $${loss}.`, "bad");
       },
     },
     {
       id: "lucky_buyer",
-      weight: source === "deal" ? 10 : 4,
+      weight: source === "deal" ? 11 + GAME.rep : 3,
       run: () => {
         const inventoryOptions = DRUGS.filter((drug) => GAME.inventory[drug.id] > 0);
         if (!inventoryOptions.length) return;
         const pick = inventoryOptions[rng(0, inventoryOptions.length - 1)];
-        const bonus = rng(25, 120);
+        const bonus = rng(28, 110);
         GAME.cash += bonus;
         GAME.inventory[pick.id] -= 1;
         GAME.rep += 2;
@@ -317,175 +336,255 @@ function triggerRandomEvent(source) {
       },
     },
     {
-      id: "stash_theft",
-      weight: 3 + Math.floor(loadedValue / 800),
+      id: "dry_supply",
+      weight: 6 + area.riskLevel,
       run: () => {
-        if (Math.random() < ((assetEffect("stashSafety") || 0) / 100)) {
-          addFeed("Your stash setup stopped a theft attempt.", "good");
-          return;
-        }
+        const pick = DRUGS[rng(0, DRUGS.length - 1)];
+        GAME.prices[pick.id] = Math.round(GAME.prices[pick.id] * 1.2);
+        addFeed(`Dry supply: ${pick.displayName} spikes in ${area.displayName}.`, "bad");
+      },
+    },
+    {
+      id: "good_deal",
+      weight: 7 + GAME.mina.trust + GAME.mina.dealChanceBonus,
+      run: () => {
+        const pick = DRUGS[rng(0, DRUGS.length - 1)];
+        const discount = Math.round(GAME.prices[pick.id] * 0.22);
+        GAME.prices[pick.id] = Math.max(5, GAME.prices[pick.id] - discount);
+        GAME.mina.trust += 1;
+        addFeed(`Mina tip: ${pick.displayName} down $${discount} this stop.`, "good");
+      },
+    },
+    {
+      id: "hot_area_warning",
+      weight: area.riskLevel >= 3 ? 8 + GAME.heat : 2,
+      run: () => {
+        GAME.heat += 2;
+        addFeed(`${area.displayName} runs hot right now.`, "bad");
+      },
+    },
+    {
+      id: "random_tip",
+      weight: 5,
+      run: () => {
+        const cash = rng(18, 55);
+        GAME.cash += cash;
+        GAME.rep += 1;
+        addFeed(`Random tip cashes out +$${cash}.`, "good");
+      },
+    },
+    {
+      id: "stash_loss_risk",
+      weight: 3 + carryRisk,
+      run: () => {
+        if (Math.random() < assetEffect("stashSafety") / 100) return addFeed("Stash setup blocked a theft attempt.", "good");
         const inventoryOptions = DRUGS.filter((drug) => GAME.inventory[drug.id] > 0);
         if (!inventoryOptions.length) return;
         const pick = inventoryOptions[rng(0, inventoryOptions.length - 1)];
         const amount = Math.min(GAME.inventory[pick.id], rng(1, 3));
         GAME.inventory[pick.id] -= amount;
-        addFeed(`Stash theft: lost ${amount} ${pick.displayName}.`, "bad");
+        addFeed(`Stash loss: ${amount} ${pick.displayName} vanished.`, "bad");
       },
     },
     {
-      id: "area_too_hot",
-      weight: area.riskLevel >= 3 ? 6 + GAME.heat : 2,
+      id: "bad_batch",
+      weight: 4 + area.riskLevel,
       run: () => {
-        GAME.heat += 3;
-        addFeed(`${area.displayName} runs too hot. Lay low or move.`, "bad");
-      },
-    },
-    {
-      id: "random_tip",
-      weight: 6,
-      run: () => {
-        GAME.cash += rng(20, 60);
-        GAME.rep += 1;
-        addFeed("Random street tip lands in your favor. Quick extra cash.", "good");
+        const loss = rng(20, 90);
+        GAME.cash = Math.max(0, GAME.cash - loss);
+        GAME.rep = Math.max(0, GAME.rep - 1);
+        addFeed(`Bad batch burns your rep and costs $${loss}.`, "bad");
       },
     },
   ];
 
-  if (GAME.flags.robbedRecently) {
-    baseEvents.push({
+  if (source === "rob") {
+    pool.push({
       id: "robbery_blowback",
-      weight: 9,
+      weight: 10 + area.rivalPressure,
       run: () => {
         GAME.heat += 2;
-        GAME.health -= rng(3, 10);
-        addFeed("Your robbery drew blowback from the block.", "bad");
+        GAME.health -= rng(3, 9);
+        addFeed("Robbery blowback: people are looking for you.", "bad");
       },
     });
   }
 
-  if (rookHigh >= 12 || area.rivalPressure >= 2) {
-    baseEvents.push({
-      id: "rook_warning",
-      weight: 7 + area.rivalPressure + Math.floor(rookHigh / 2),
+  if (pressure !== "None" || area.rivalPressure >= 2) {
+    pool.push({
+      id: "rival_pressure",
+      weight: pressure === "Active" ? 12 : 7,
       run: () => {
         GAME.rook.warned = true;
         GAME.rook.attention += 3;
-        GAME.heat += 2;
-        addFeed("Rook sends a warning: pay tax, leave, or be tested.", "bad");
+        addFeed("Rival pressure rises. Rook's people are checking your route.", "bad");
       },
     });
-    baseEvents.push({
+    pool.push({
       id: "rook_tax",
-      weight: GAME.rook.warned ? 6 : 1,
+      weight: pressure === "Active" ? 9 : 3,
       run: () => {
-        const tax = Math.min(GAME.cash, rng(40, 140));
+        const tax = Math.min(GAME.cash, rng(35, 130));
         GAME.cash -= tax;
         GAME.rook.taxActive = true;
-        addFeed(`Rook's crew taxes your route for $${tax}.`, "bad");
-      },
-    });
-    baseEvents.push({
-      id: "rook_negotiation",
-      weight: GAME.mina.trust > 3 ? 4 : 1,
-      run: () => {
-        GAME.rook.attention = Math.max(0, GAME.rook.attention - 4);
-        GAME.mina.trust += 1;
-        addFeed("Mina brokers a short peace window with Rook's corner.", "good");
+        addFeed(`Rook pressure tax hits for $${tax}.`, "bad");
       },
     });
   }
 
-  if (Math.random() > 0.63) return;
-
-  const event = weightedPick(baseEvents.filter((entry) => entry.weight > 0));
+  const event = weightedPick(pool);
   event.run();
+
   GAME.health = Math.max(0, GAME.health);
   GAME.heat = Math.max(0, GAME.heat);
+
   if (GAME.health <= 0) {
     addFeed("You got folded. Reset and run it cleaner next time.", "bad");
     resetGame();
   }
 }
 
+function marketSignals() {
+  let bestMarginId = null;
+  let bestMarginValue = -Infinity;
+  let cheapestId = null;
+  let cheapestPrice = Infinity;
+  let bestFlipId = null;
+  let bestFlipScore = -Infinity;
+
+  for (const drug of DRUGS) {
+    const buy = GAME.prices[drug.id];
+    const sell = sellPriceFor(drug.id);
+    const margin = sell - buy;
+    const flip = (drug.maxPrice - buy) / Math.max(1, buy);
+
+    if (margin > bestMarginValue) {
+      bestMarginValue = margin;
+      bestMarginId = drug.id;
+    }
+    if (buy < cheapestPrice) {
+      cheapestPrice = buy;
+      cheapestId = drug.id;
+    }
+    if (flip > bestFlipScore) {
+      bestFlipScore = flip;
+      bestFlipId = drug.id;
+    }
+  }
+
+  return { bestMarginId, cheapestId, bestFlipId };
+}
+
 function renderHud() {
   const area = currentArea();
   const chips = [
-    `Day ${GAME.day}`,
-    `Tick ${GAME.tick}/4`,
-    `${area.displayName}`,
     `Cash $${GAME.cash}`,
-    `Bank $${GAME.bank}`,
     `Heat ${GAME.heat}`,
     `Rep ${GAME.rep}`,
-    `Health ${GAME.health}`,
-    `Carry ${cargoCount()}/${GAME.maxCarry}`,
-    `Dre Debt $${GAME.dre.loanOutstanding}`,
-    `Mina Trust ${GAME.mina.trust}`,
-    `Rook Pressure ${GAME.rook.attention}`,
+    `Day ${GAME.day} / Tick ${GAME.tick}`,
+    `Area ${area.displayName}`,
   ];
   el.hudStats.innerHTML = chips.map((chip) => `<span class="chip">${chip}</span>`).join("");
 }
 
 function renderMarket() {
-  el.marketTable.innerHTML = "";
-  const header = document.createElement("div");
-  header.className = "market-row header";
-  header.innerHTML = "<div>Drug</div><div>Price</div><div>On Hand</div><div>Actions</div>";
-  el.marketTable.appendChild(header);
+  const { bestMarginId, cheapestId, bestFlipId } = marketSignals();
+  const rows = [
+    '<div class="market-row header"><div>Drug</div><div>Buy</div><div>Sell</div><div>Owned</div><div>Margin</div><div>Actions</div></div>',
+  ];
 
-  DRUGS.forEach((drug) => {
-    const row = document.createElement("div");
-    row.className = "market-row";
-    row.innerHTML = `
-      <div><strong>${drug.displayName}</strong><br><span class="muted">${drug.category} • risk ${drug.riskTier}</span></div>
-      <div>$${GAME.prices[drug.id]}</div>
-      <div>${GAME.inventory[drug.id]}</div>
-      <div class="actions">
-        <button class="btn" data-buy="${drug.id}" type="button">Buy 1</button>
-        <button class="btn" data-sell="${drug.id}" type="button">Sell 1</button>
+  for (const drug of DRUGS) {
+    const buy = GAME.prices[drug.id];
+    const sell = sellPriceFor(drug.id);
+    const margin = sell - buy;
+    const cues = [];
+
+    if (drug.id === cheapestId) cues.push('<span class="signal cheap">cheap</span>');
+    if (drug.id === bestMarginId) cues.push('<span class="signal hot">hot</span>');
+    if (drug.id === bestFlipId) cues.push('<span class="signal flip">flip</span>');
+
+    rows.push(`
+      <div class="market-row">
+        <div class="drug-meta"><strong>${drug.displayName}</strong>${cues.join("")}</div>
+        <div>$${buy}</div>
+        <div>$${sell}</div>
+        <div>${GAME.inventory[drug.id]}</div>
+        <div class="${margin >= 0 ? "margin-positive" : "margin-negative"}">${margin >= 0 ? "+" : ""}$${margin}</div>
+        <div class="actions">
+          <button class="btn" data-buy-one="${drug.id}" type="button">B1</button>
+          <button class="btn" data-buy-max="${drug.id}" type="button">BMax</button>
+          <button class="btn" data-sell-one="${drug.id}" type="button">S1</button>
+          <button class="btn" data-sell-all="${drug.id}" type="button">SAll</button>
+        </div>
       </div>
-    `;
-    el.marketTable.appendChild(row);
-  });
+    `);
+  }
+
+  el.marketTable.innerHTML = rows.join("");
 }
 
 function renderTravel() {
   el.travelList.innerHTML = "";
-  AREAS.forEach((area) => {
+  for (const area of AREAS) {
     const button = document.createElement("button");
     button.className = "btn travel";
     button.type = "button";
     button.disabled = area.id === GAME.locationId;
-    button.textContent = `${area.displayName} (Risk ${area.riskLevel})`;
+    button.innerHTML = `${area.displayName}<div class="travel-sub">Risk ${areaRiskLabel(area.riskLevel)} • ${area.hint}</div>`;
     button.addEventListener("click", () => travelTo(area.id));
     el.travelList.appendChild(button);
-  });
+  }
+}
+
+function renderRiskPreview() {
+  const area = currentArea();
+  const areaRisk = areaRiskLabel(area.riskLevel);
+  const rookPressure = rookPressureState();
+  const carry = cargoValue();
+  const carryState = carry >= 900 ? "High" : carry >= 450 ? "Medium" : "Low";
+
+  el.riskPreview.innerHTML = `
+    <div class="risk-chip ${areaRisk.toLowerCase()}">Area Risk: <strong>${areaRisk}</strong></div>
+    <div class="risk-chip ${rookPressure === "Active" ? "high" : rookPressure === "Watching" ? "medium" : "low"}">Rook Pressure: <strong>${rookPressure}</strong></div>
+    <div class="risk-chip ${carryState.toLowerCase()}">Carry Exposure: <strong>${carryState}</strong> ($${carry})</div>
+  `;
 }
 
 function renderHoldings() {
   const lines = DRUGS
     .filter((drug) => GAME.inventory[drug.id] > 0)
+    .sort((a, b) => GAME.inventory[b.id] - GAME.inventory[a.id])
     .map((drug) => `<div class="label-line"><span>${drug.displayName}</span><strong>${GAME.inventory[drug.id]}</strong></div>`)
     .join("");
-  el.holdings.innerHTML = lines || '<p class="muted">No product on you.</p>';
+
+  el.holdings.innerHTML = `
+    <div class="label-line"><span>Carry Slots</span><strong>${cargoCount()} / ${GAME.maxCarry}</strong></div>
+    <div class="label-line"><span>Carry Value</span><strong>$${cargoValue()}</strong></div>
+    <div class="label-line"><span>Dre Debt</span><strong>$${GAME.dre.loanOutstanding}</strong></div>
+    ${lines || '<p class="muted">No product on you.</p>'}
+  `;
 }
 
 function renderFeed() {
   el.eventFeed.innerHTML = GAME.events
-    .map((entry) => `<div class="feed-item ${entry.tone}">${entry.text}</div>`)
+    .map((entry) => `<div class="feed-item ${entry.tone}"><strong>[${entry.stamp}]</strong> ${entry.text}</div>`)
     .join("");
 }
 
 function renderUpgrades() {
-  el.upgrades.innerHTML = "";
-  UPGRADES.forEach((upgrade) => {
-    const owned = GAME.assets.includes(upgrade.id);
-    const canSee = GAME.cash >= (upgrade.unlockRequirements.money || 0) || GAME.rep >= (upgrade.unlockRequirements.rep || 0);
-    if (!canSee && !owned) return;
+  const unlockedPanel = GAME.cash >= 900 || GAME.rep >= 12;
+  el.assetsPanel.classList.toggle("hidden", !unlockedPanel);
+  if (!unlockedPanel) return;
 
-    const block = document.createElement("div");
-    block.className = "label-line";
-    block.innerHTML = `<span>${upgrade.displayName} - $${upgrade.cost}</span>`;
+  el.upgrades.innerHTML = "";
+  for (const upgrade of UPGRADES) {
+    const owned = GAME.assets.includes(upgrade.id);
+    const canSee = owned || GAME.cash >= (upgrade.unlockRequirements.money || 0) || GAME.rep >= (upgrade.unlockRequirements.rep || 0);
+    if (!canSee) continue;
+
+    const line = document.createElement("div");
+    line.className = "label-line";
+    line.innerHTML = `<span>${upgrade.displayName} ($${upgrade.cost})</span>`;
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -493,12 +592,12 @@ function renderUpgrades() {
     btn.textContent = owned ? "Owned" : "Buy";
     btn.disabled = owned;
     btn.addEventListener("click", () => maybeBuyUpgrade(upgrade.id));
-    block.appendChild(btn);
-    el.upgrades.appendChild(block);
-  });
+    line.appendChild(btn);
+    el.upgrades.appendChild(line);
+  }
 
   if (!el.upgrades.children.length) {
-    el.upgrades.innerHTML = '<p class="muted">Keep stacking cash to unlock assets.</p>';
+    el.upgrades.innerHTML = '<p class="muted">Keep stacking cash or rep to unlock assets.</p>';
   }
 }
 
@@ -506,6 +605,7 @@ function render() {
   renderHud();
   renderMarket();
   renderTravel();
+  renderRiskPreview();
   renderHoldings();
   renderFeed();
   renderUpgrades();
@@ -513,16 +613,21 @@ function render() {
 
 function bindEvents() {
   el.marketTable.addEventListener("click", (event) => {
-    const buyId = event.target.getAttribute("data-buy");
-    const sellId = event.target.getAttribute("data-sell");
-    if (buyId) buyDrug(buyId);
-    if (sellId) sellDrug(sellId);
+    const buyOne = event.target.getAttribute("data-buy-one");
+    const buyMax = event.target.getAttribute("data-buy-max");
+    const sellOne = event.target.getAttribute("data-sell-one");
+    const sellAll = event.target.getAttribute("data-sell-all");
+
+    if (buyOne) buyDrug(buyOne, 1);
+    if (buyMax) buyDrug(buyMax, maxBuyQty(buyMax));
+    if (sellOne) sellDrug(sellOne, 1);
+    if (sellAll) sellDrug(sellAll, GAME.inventory[sellAll]);
   });
 
   el.robBtn.addEventListener("click", robAction);
   el.loanBtn.addEventListener("click", takeDreLoan);
   el.repayBtn.addEventListener("click", repayDre);
-  el.rerollBtn.addEventListener("click", () => stepTick("You slow down and let one market tick pass."));
+  el.rerollBtn.addEventListener("click", () => stepTick("You lay low and let one market tick pass."));
   el.clearFeedBtn.addEventListener("click", () => {
     GAME.events = [];
     renderFeed();
@@ -534,10 +639,9 @@ function resetGame() {
   GAME.tick = 1;
   GAME.locationId = "north_star_lot";
   GAME.cash = 200;
-  GAME.bank = 0;
-  GAME.health = 100;
   GAME.heat = 0;
   GAME.rep = 0;
+  GAME.health = 100;
   GAME.maxCarry = 30;
   GAME.inventory = Object.fromEntries(DRUGS.map((drug) => [drug.id, 0]));
   GAME.events = [];
