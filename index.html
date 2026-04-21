@@ -3,135 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>907 Hustle</title>
+    <title>907 Hustle - Drug Trade Sim</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <main class="app">
-      <section id="startScreen" class="screen card start-card">
+      <header class="hud card">
         <h1>907 HUSTLE</h1>
-        <p class="subtitle">A grounded Anchorage hustle story.</p>
-        <label for="playerName">Your name</label>
-        <input id="playerName" type="text" maxlength="20" placeholder="Enter a street name" />
-        <button id="startGameBtn" class="btn primary">Start Hustle</button>
-      </section>
+        <div id="hudStats" class="hud-stats"></div>
+      </header>
 
-      <section id="gameScreen" class="screen hidden game-shell">
-        <header class="hud-bar card">
-          <div id="hudPrimary" class="hud-primary"></div>
-          <div id="hudStats" class="hud-chips"></div>
-          <button id="menuToggleBtn" class="btn ghost menu-toggle" type="button">Menu</button>
-        </header>
-
-        <section class="game-layout">
-          <section class="card desktop-panel desktop-actions-panel" aria-label="Desktop actions panel">
-            <header class="overlay-header">
-              <h3 id="desktopActionsTitle">Actions</h3>
-              <button id="desktopActionsBackBtn" class="btn ghost" type="button">Back</button>
-            </header>
-            <div id="desktopActionsPanel" class="overlay-list"></div>
-          </section>
-
-          <section class="story-column">
-            <section class="card story-panel">
-              <h3 id="storyTitle">Opening</h3>
-              <p id="storyText" class="story-text"></p>
-              <div id="choiceButtons" class="choice-row"></div>
-            </section>
-
-            <nav class="quick-bar card" aria-label="Quick actions">
-              <button id="openActionsBtn" class="btn primary" type="button">Actions</button>
-              <button id="openJournalBtn" class="btn" type="button">Journal</button>
-              <button id="openSceneBtn" class="btn" type="button">Scene</button>
-            </nav>
-          </section>
-
-          <section class="desktop-column">
-            <section class="card desktop-panel" aria-label="Desktop scene panel">
-              <header class="overlay-header"><h3>Scene</h3></header>
-              <figure class="scene-art-frame">
-                <img
-                  id="desktopSceneArt"
-                  class="scene-art-image"
-                  src="assets/cousins-apt-placeholder.svg"
-                  alt="Gritty pixel-style view of cousin's apartment in Anchorage."
-                />
-              </figure>
-              <p id="desktopSceneText" class="scene-copy"></p>
-            </section>
-
-            <section class="card desktop-panel" aria-label="Desktop journal panel">
-              <header class="overlay-header"><h3>Journal</h3></header>
-              <div id="desktopDetailPanel" class="event-log"></div>
-            </section>
-          </section>
-        </section>
-
-        <section id="actionsSheet" class="overlay hidden" aria-hidden="true">
-          <div class="overlay-backdrop" data-close-overlay="actions"></div>
-          <div class="overlay-panel sheet-panel">
-            <header class="overlay-header">
-              <h3 id="actionsTitle">Actions</h3>
-              <div class="overlay-header-actions">
-                <button id="actionsBackBtn" class="btn ghost" type="button">Back</button>
-                <button id="closeActionsBtn" class="btn ghost" type="button">Close</button>
-              </div>
-            </header>
-            <div id="actionsPanel" class="overlay-list"></div>
+      <section class="layout">
+        <section class="card market-panel">
+          <div class="panel-header">
+            <h2>Market</h2>
+            <button id="rerollBtn" class="btn ghost" type="button">Wait +1 Tick</button>
           </div>
+          <p class="muted">Buy low, move fast, sell high. Prices change when you travel or wait.</p>
+          <div id="marketTable" class="market-table"></div>
         </section>
 
-        <section id="journalOverlay" class="overlay hidden" aria-hidden="true">
-          <div class="overlay-backdrop" data-close-overlay="journal"></div>
-          <div class="overlay-panel">
-            <header class="overlay-header">
-              <h3 id="detailTitle">Journal</h3>
-              <button id="closeJournalBtn" class="btn ghost" type="button">Close</button>
-            </header>
-            <div id="detailPanel" class="event-log"></div>
-          </div>
-        </section>
-
-        <section id="sceneOverlay" class="overlay hidden" aria-hidden="true">
-          <div class="overlay-backdrop" data-close-overlay="scene"></div>
-          <div class="overlay-panel">
-            <header class="overlay-header">
-              <h3>Scene</h3>
-              <button id="closeSceneBtn" class="btn ghost" type="button">Close</button>
-            </header>
-            <figure class="scene-art-frame">
-              <img
-                id="sceneArt"
-                class="scene-art-image"
-                src="assets/cousins-apt-placeholder.svg"
-                alt="Gritty pixel-style view of cousin's apartment in Anchorage."
-              />
-            </figure>
-            <p id="sceneText" class="scene-copy"></p>
-          </div>
-        </section>
-
-        <section id="menuOverlay" class="overlay hidden" aria-hidden="true">
-          <div class="overlay-backdrop" data-close-overlay="menu"></div>
-          <div class="overlay-panel menu-panel">
-            <header class="overlay-header">
-              <h3>Game Menu</h3>
-              <button id="closeMenuBtn" class="btn ghost" type="button">Close</button>
-            </header>
-            <div class="menu-actions">
-              <button id="saveBtn" class="btn">Save</button>
-              <button id="loadBtn" class="btn">Load</button>
-              <button id="restartBtn" class="btn danger">Restart</button>
+        <aside class="card side-panel">
+          <section>
+            <h3>Quick Actions</h3>
+            <div class="quick-actions">
+              <button id="robBtn" class="btn danger" type="button">Rob for Cash</button>
+              <button id="loanBtn" class="btn" type="button">Ask Dre for Loan</button>
+              <button id="repayBtn" class="btn" type="button">Repay Dre</button>
             </div>
-          </div>
-        </section>
+          </section>
+
+          <section>
+            <h3>Travel (907)</h3>
+            <div id="travelList" class="travel-list"></div>
+          </section>
+
+          <section>
+            <h3>Holdings</h3>
+            <div id="holdings" class="holdings"></div>
+          </section>
+
+          <section>
+            <h3>Scaffold: Assets & Crew</h3>
+            <div id="upgrades" class="upgrades"></div>
+          </section>
+        </aside>
       </section>
 
-      <section id="endScreen" class="screen hidden card">
-        <h2>30 Days Complete</h2>
-        <p id="outcomeSummary"></p>
-        <div id="finalStats" class="list"></div>
-        <button id="playAgainBtn" class="btn primary">Play Again</button>
+      <section class="card feed-panel">
+        <div class="panel-header">
+          <h2>Street Feed</h2>
+          <button id="clearFeedBtn" class="btn ghost" type="button">Clear</button>
+        </div>
+        <div id="eventFeed" class="event-feed"></div>
       </section>
     </main>
 
