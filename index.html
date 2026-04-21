@@ -7,55 +7,55 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main class="app">
+    <main class="app-shell">
       <header class="hud card">
         <h1>907 HUSTLE</h1>
         <div id="hudStats" class="hud-stats"></div>
       </header>
 
-      <section class="layout">
+      <section class="main-grid">
         <section class="card market-panel">
           <div class="panel-header">
-            <h2>Market</h2>
+            <h2>Drug Market</h2>
             <button id="rerollBtn" class="btn ghost" type="button">Wait +1 Tick</button>
           </div>
-          <p class="muted">Buy low, move fast, sell high. Prices change when you travel or wait.</p>
           <div id="marketTable" class="market-table"></div>
         </section>
 
-        <aside class="card side-panel">
-          <section>
-            <h3>Quick Actions</h3>
+        <aside class="support-column">
+          <section class="card support-panel compact">
+            <h3>Actions + Travel</h3>
             <div class="quick-actions">
               <button id="robBtn" class="btn danger" type="button">Rob for Cash</button>
               <button id="loanBtn" class="btn" type="button">Ask Dre for Loan</button>
               <button id="repayBtn" class="btn" type="button">Repay Dre</button>
             </div>
-          </section>
-
-          <section>
-            <h3>Travel (907)</h3>
             <div id="travelList" class="travel-list"></div>
           </section>
 
-          <section>
+          <section class="card support-panel compact risk-panel">
+            <h3>Risk Preview</h3>
+            <div id="riskPreview"></div>
+          </section>
+
+          <section class="card support-panel compact">
             <h3>Holdings</h3>
             <div id="holdings" class="holdings"></div>
           </section>
 
-          <section>
-            <h3>Scaffold: Assets & Crew</h3>
+          <section id="assetsPanel" class="card support-panel compact hidden">
+            <h3>Assets &amp; Crew</h3>
             <div id="upgrades" class="upgrades"></div>
           </section>
-        </aside>
-      </section>
 
-      <section class="card feed-panel">
-        <div class="panel-header">
-          <h2>Street Feed</h2>
-          <button id="clearFeedBtn" class="btn ghost" type="button">Clear</button>
-        </div>
-        <div id="eventFeed" class="event-feed"></div>
+          <section class="card support-panel feed-panel compact">
+            <div class="panel-header">
+              <h3>Street Feed</h3>
+              <button id="clearFeedBtn" class="btn ghost" type="button">Clear</button>
+            </div>
+            <div id="eventFeed" class="event-feed"></div>
+          </section>
+        </aside>
       </section>
     </main>
 
