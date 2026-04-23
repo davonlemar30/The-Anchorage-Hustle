@@ -683,10 +683,47 @@ const AREAS = [
 ];
 
 const UPGRADES = [
-  {id:"beater",       name:"Used Beater",          cost:900,  desc:"+20 carry · −2 heat on travel", fx:{maxCarry:20,heatTravel:-2}, bucket:"mobility"},
-  {id:"stash_closet", name:"Hidden Closet Stash",  cost:650,  desc:"+10 carry · stash safety",      fx:{maxCarry:10}, bucket:"carry"},
-  {id:"burner_pack",  name:"Burner Pack",          cost:450,  desc:"+8 event protection · draw",    fx:{}, bucket:"utility"},
+  {id:"beater",       name:"Used Beater",          cost:900,  desc:"+20 carry · −2 heat on travel", fx:{maxCarry:20,heatTravel:-2}, bucket:"mobility", req:{rep:6}},
+  {id:"stash_closet", name:"Hidden Closet Stash",  cost:650,  desc:"+10 carry · stash safety",      fx:{maxCarry:10}, bucket:"carry", req:{rep:4}},
+  {id:"burner_pack",  name:"Burner Pack",          cost:450,  desc:"Unlocks contacts + mission lane",    fx:{}, bucket:"utility", req:{rep:5}},
   {id:"muscle_1",     name:"1 Crew Muscle",        cost:1700, desc:"Mugging defense +18 · −rival",  fx:{}, req:{rep:12}, bucket:"defense"},
+];
+
+const CONTACTS = [
+  {
+    id:"mina",
+    name:"Mina",
+    unlockRep:5,
+    missions:[
+      {
+        id:"dock_sweep",
+        title:"Night Dock Sweep",
+        desc:"Move a marked crate before APD logs it. Fast cash if clean, rough blowback if you slip.",
+        risk:"Medium risk · cash + rep upside, heat/health downside.",
+        reward:{cash:[220,420],rep:2},
+        fail:{cash:[60,170],heat:3,health:10,rep:1},
+        repReq:5,
+      },
+      {
+        id:"paper_burn",
+        title:"Paper Burn",
+        desc:"Deliver records that clear heat on one lane. Better if your rep is solid and heat is controlled.",
+        risk:"Higher risk · heat relief + debt cut upside, major heat spike on fail.",
+        reward:{cash:[120,260],rep:3,heatDown:2,debtCut:[40,120]},
+        fail:{cash:[90,210],heat:4,rep:2},
+        repReq:12,
+      },
+      {
+        id:"route_lock",
+        title:"Route Lock",
+        desc:"Secure a safer route with Mina's network. High-rep work that can unlock better lanes.",
+        risk:"High risk · route advantage + bigger rep, harsh penalties if burned.",
+        reward:{cash:[260,520],rep:4,unlock:"safe_route"},
+        fail:{cash:[120,260],heat:4,health:14,rep:2},
+        repReq:20,
+      },
+    ],
+  },
 ];
 
 const ENEMY_TYPES = [
@@ -755,18 +792,18 @@ function getTrend(id,hist) {
 
 const RUN_GOAL_NET_WORTH = 10000;
 const RUN_GOAL_HEAT_CAP = 7;
+const SAVE_KEY = "907g3";
+const MANUAL_SAVE_KEY = "907g3_manual";
 
 const START_DAY_TICKS = 4;
 
 function toAbsTick(day,tick){ return ((day-1)*START_DAY_TICKS)+tick; }
 
-function paceState(G) {
-  const progress=Math.min(1,Math.max(0,toAbsTick(G.day,Math.min(4,G.tick))/toAbsTick(30,4)));
-  const expected=RUN_GOAL_NET_WORTH*progress;
-  const worth=netWorthOf(G);
-  if(worth>=expected*1.15) return {label:"Ahead of pace",tone:"good",delta:worth-expected};
-  if(worth>=expected*0.92) return {label:"On pace",tone:"",delta:worth-expected};
-  return {label:"Behind pace",tone:"bad",delta:worth-expected};
+function pressureLevel(day){
+  if(day>=24) return 3;
+  if(day>=16) return 2;
+  if(day>=8) return 1;
+  return 0;
 }
 
 function drePressureStage(G){
@@ -843,9 +880,8 @@ function initGame() {
     feed:[{text:"Game started. Check the market.",tone:"",stamp:"Day 1 · Morning"}],
     pendingEvent:null,
     combatState:null,
-    dayStats:{startWorth:200,bestTrade:0,biggestSale:0,areaSales:{}},
+    dayStats:{startWorth:200,startHeat:0,bestTrade:0,biggestSale:0,areaSales:{}},
     runStats:{bestTrade:0,biggestSale:0,hottestDay:0,cleanProfitDay:0,bestArea:{id:"north_star_lot",total:0},areaTotals:{},seizures:0,forcedDumps:0,records:[]},
-    guidanceStep:0,
     seenMeta:{north_star_lot:Object.fromEntries(DRUGS.map(d=>[d.id,{day:1,tick:1}]))},
     inventoryAge:Object.fromEntries(DRUGS.map(d=>[d.id,null])),
     carryStreak:0,
@@ -854,6 +890,9 @@ function initGame() {
     lockdowns:[],
     daySummary:null,
     runSummary:null,
+    unlockedRoutes:[],
+    contacts:{},
+    contactLog:[],
     gameOver:false,
   };
 }
@@ -879,6 +918,18 @@ function pickRandomEvent(G,trigger) {
   return eligible[Math.floor(Math.random()*eligible.length)];
 }
 
+function missionSuccessChance(G,mission){
+  const area=AREAS.find(a=>a.id===G.locationId)||AREAS[0];
+  const pressure=pressureLevel(G.day);
+  const gearBonus=(G.assets.includes("muscle_1")?0.08:0)+(G.assets.includes("beater")?0.05:0);
+  const repScore=Math.min(0.2,Math.max(0,(G.rep-(mission.repReq||0))*0.012));
+  const healthScore=G.health>=80?0.08:G.health>=55?0.03:-0.1;
+  const heatPenalty=Math.min(0.22,G.heat*0.02);
+  const areaPenalty=(area.risk*0.03)+(area.police*0.015);
+  const pressurePenalty=pressure*0.05;
+  return Math.max(0.12,Math.min(0.88,0.56+gearBonus+repScore+healthScore-heatPenalty-areaPenalty-pressurePenalty));
+}
+
 // ── REDUCER ───────────────────────────────────────────────────────────────────
 function reducer(G,action) {
   switch(action.type) {
@@ -902,7 +953,6 @@ function reducer(G,action) {
         areaTradeCounts:{...G.areaTradeCounts,[G.locationId]:(G.areaTradeCounts?.[G.locationId]||0)+1},
         feed:addFeed(G,`Bought ${qty}× ${DRUGS.find(d=>d.id===drugId)?.name} — −$${cost.toLocaleString()}.`,"good"),
       };
-      if(next.day<=3&&next.guidanceStep<2) next={...next,guidanceStep:2,feed:addFeed(next,"Early run tip: flip quick wins before holding deep inventory.","warn")};
       return next;
     }
 
@@ -945,7 +995,8 @@ function reducer(G,action) {
       const target=AREAS.find(a=>a.id===action.areaId);
       if(!target||target.id===G.locationId) return G;
       const {nTick,nDay,nPrices,nHist,nAreaState}=advanceTime(G);
-      const heatDelta=target.risk-1-(G.assets.includes("beater")?2:0);
+      const runPressure=pressureLevel(G.day);
+      const heatDelta=target.risk-1-(G.assets.includes("beater")?2:0)+runPressure;
       let nextHeat=Math.max(0,Math.min(15,G.heat+heatDelta));
       let cashPenalty=0;
       let inv={...G.inventory};
@@ -954,13 +1005,13 @@ function reducer(G,action) {
         const loaded=DRUGS.filter(d=>inv[d.id]>0);
         if(loaded.length){
           const pick=loaded[rng(0,loaded.length-1)];
-          const seized=Math.max(1,Math.floor(inv[pick.id]*rng(20,45)/100));
+          const seized=Math.max(1,Math.floor(inv[pick.id]*rng(20,45 + runPressure*8)/100));
           inv[pick.id]=Math.max(0,inv[pick.id]-seized);
           heatFeed=`Heat 10+ raid pressure: seized ${seized}× ${pick.name} in transit.`;
         }
-        cashPenalty=Math.min(G.cash,rng(90,220));
+        cashPenalty=Math.min(G.cash,rng(90,220 + runPressure*40));
       } else if(nextHeat>=8){
-        cashPenalty=Math.min(G.cash,rng(35,120));
+        cashPenalty=Math.min(G.cash,rng(35,120 + runPressure*25));
         heatFeed=`Heat 8+ pressure: checkpoints burned $${cashPenalty} to move.`;
       } else if(nextHeat>=5&&Math.random()<0.45){
         cashPenalty=Math.min(G.cash,rng(20,70));
@@ -991,7 +1042,7 @@ function reducer(G,action) {
       if(heatFeed) next={...next,feed:addFeed(next,heatFeed,"bad")};
       if((heatFeed||"").includes("seized")) seizureInc+=1;
       if(bandAlert) next={...next,feed:addFeed(next,bandAlert,getHeatBand(nextHeat).tone)};
-      if(nextHeat>=9&&Math.random()<0.25){
+      if(nextHeat>=9&&Math.random()<(0.25 + runPressure*0.05)){
         const lockArea=AREAS.filter(a=>a.id!==action.areaId)[rng(0,AREAS.length-2)];
         next={...next,lockdowns:[...(next.lockdowns||[]),{areaId:lockArea.id,untilDay:nDay+1}],feed:addFeed(next,`APD attention makes ${lockArea.name} too hot through Day ${nDay+1}.`,"warn")};
       }
@@ -1011,6 +1062,7 @@ function reducer(G,action) {
 
     case "LAY_LOW": {
       const {nTick,nDay,nPrices,nHist,interest,nAreaState}=advanceTime(G);
+      const runPressure=pressureLevel(G.day);
       const ev=pickRandomEvent(G,"laylow");
       let newFeed=[
         ...(interest?[{text:`Bank interest +$${interest}.`,tone:"good",stamp:`Day ${nDay} · ${SLOTS[nTick-1]}`}]:[]),
@@ -1026,27 +1078,27 @@ function reducer(G,action) {
         const overdueDays=Math.max(1,G.day-dre.deadline+1);
         const stage=drePressureStage(G).stage;
         const trustSoftener=dre.trust>=4?0.75:dre.trust<=-2?1.2:1;
-        const penalty=Math.min(G.cash,Math.round((rng(35,90)+(overdueDays*20)+(stage*20))*trustSoftener));
+        const penalty=Math.min(G.cash,Math.round((rng(35,90)+(overdueDays*20)+(stage*20)+(runPressure*35))*trustSoftener));
         extraCash=-penalty;
         dre.trust-=1;
         extraHeat=Math.min(5,1+Math.floor(overdueDays/2)+stage);
         const lines=["Dre's getting impatient.","You're out of favors.","Dre's done asking."];
         newFeed=[{text:`${lines[Math.min(2,stage)]} Collection hit -$${penalty}. Overdue day ${overdueDays}.`,tone:"bad",stamp:`Day ${nDay} · ${SLOTS[nTick-1]}`},...newFeed].slice(0,70);
       }
-      let nextHeat=Math.max(0,Math.min(15,G.heat-1+extraHeat));
+      let nextHeat=Math.max(0,Math.min(15,G.heat-1+extraHeat+runPressure));
       let seizureInc=0;
       if(nextHeat>=10){
         const loaded=DRUGS.filter(d=>inv[d.id]>0);
         if(loaded.length){
           const pick=loaded[rng(0,loaded.length-1)];
-          const lost=Math.max(1,Math.floor(inv[pick.id]*rng(18,35)/100));
+          const lost=Math.max(1,Math.floor(inv[pick.id]*rng(18,35 + runPressure*7)/100));
           inv[pick.id]=Math.max(0,inv[pick.id]-lost);
           if(inv[pick.id]===0) invAge[pick.id]=null;
           newFeed=[{text:`Heat 10+ raid: APD seized ${lost}× ${pick.name} from stash movement.`,tone:"bad",stamp:`Day ${nDay} · ${SLOTS[nTick-1]}`},...newFeed].slice(0,70);
           seizureInc+=1;
         }
       } else if(nextHeat>=8 && Math.random()<0.65){
-        const sweep=Math.min(Math.max(0,G.cash+extraCash),rng(25,95));
+        const sweep=Math.min(Math.max(0,G.cash+extraCash),rng(25,95 + runPressure*18));
         extraCash-=Math.max(0,sweep);
         newFeed=[{text:`Heat 8+ sweep burned another $${Math.max(0,sweep)} in hush money.`,tone:"bad",stamp:`Day ${nDay} · ${SLOTS[nTick-1]}`},...newFeed].slice(0,70);
       } else if(nextHeat>=5 && Math.random()<0.4){
@@ -1114,13 +1166,15 @@ function reducer(G,action) {
           day:G.day,
           pnl,
           bestTrade:G.dayStats?.bestTrade||0,
+          biggestSale:G.dayStats?.biggestSale||0,
           netWorth:dayWorth,
           debt:next.dre.loan,
           debtOverdue:overdue,
           heat:next.heat,
+          heatDelta:next.heat-(G.dayStats?.startHeat||G.heat),
           note,
           areaTop:Object.entries(next.dayStats?.areaSales||{}).sort((a,b)=>b[1]-a[1])[0]||null,
-        },dayStats:{startWorth:dayWorth,bestTrade:0,biggestSale:0,areaSales:{}},runStats:{...next.runStats,cleanProfitDay:cleanCandidate}};
+        },dayStats:{startWorth:dayWorth,startHeat:next.heat,bestTrade:0,biggestSale:0,areaSales:{}},runStats:{...next.runStats,cleanProfitDay:cleanCandidate}};
       }
       if(nDay>30){
         const worth=netWorthOf(next);
@@ -1178,8 +1232,43 @@ function reducer(G,action) {
     case "BUY_UPGRADE": {
       const u=UPGRADES.find(x=>x.id===action.id);
       if(!u||G.assets.includes(action.id)||G.cash<u.cost) return G;
+      if((u.req?.rep||0)>G.rep) return {...G,feed:addFeed(G,`${u.name} needs more rep.`,`bad`)};
       const newMax=G.maxCarry+(u.fx.maxCarry||0);
-      return {...G,cash:G.cash-u.cost,assets:[...G.assets,action.id],maxCarry:newMax,feed:addFeed(G,`Purchased ${u.name}.`,"good")};
+      let next={...G,cash:G.cash-u.cost,assets:[...G.assets,action.id],maxCarry:newMax,feed:addFeed(G,`Purchased ${u.name}.`,"good")};
+      if(action.id==="burner_pack"){
+        next={...next,feed:addFeed(next,"Burner online. Contacts unlocked: Mina is now reachable.","good")};
+      }
+      return next;
+    }
+
+    case "RUN_MISSION": {
+      if(!G.assets.includes("burner_pack")) return {...G,feed:addFeed(G,"No burner, no contacts.","bad")};
+      const contact=CONTACTS.find(c=>c.id===action.contactId);
+      const mission=contact?.missions?.find(m=>m.id===action.missionId);
+      if(!contact||!mission) return G;
+      if(G.rep<(mission.repReq||0)) return {...G,feed:addFeed(G,"Your name isn't strong enough for that mission yet.","bad")};
+      const chance=missionSuccessChance(G,mission);
+      const roll=Math.random();
+      const pressure=pressureLevel(G.day);
+      let next={...G,contacts:{...(G.contacts||{}),[contact.id]:{lastMissionDay:G.day}}};
+      if(roll<=chance){
+        const cash=rng(mission.reward.cash[0],mission.reward.cash[1]);
+        const debtCut=mission.reward.debtCut?rng(mission.reward.debtCut[0],mission.reward.debtCut[1]):0;
+        next.cash+=cash;
+        next.rep+=mission.reward.rep||0;
+        next.heat=Math.max(0,next.heat-(mission.reward.heatDown||0));
+        if(debtCut>0&&next.dre.loan>0) next.dre={...next.dre,loan:Math.max(0,next.dre.loan-debtCut)};
+        if(mission.reward.unlock&&!next.unlockedRoutes.includes(mission.reward.unlock)) next.unlockedRoutes=[...next.unlockedRoutes,mission.reward.unlock];
+        next.feed=addFeed(next,`${contact.name}: ${mission.title} succeeded (+$${cash}, +${mission.reward.rep||0} rep).`,"good");
+      } else {
+        const cashLoss=rng(mission.fail.cash[0],mission.fail.cash[1])+(pressure*20);
+        next.cash=Math.max(0,next.cash-cashLoss);
+        next.heat=Math.min(15,next.heat+(mission.fail.heat||0)+pressure);
+        next.health=Math.max(1,next.health-(mission.fail.health||0));
+        next.rep=Math.max(0,next.rep-(mission.fail.rep||0));
+        next.feed=addFeed(next,`${contact.name}: ${mission.title} failed (-$${cashLoss}, heat up).`,"bad");
+      }
+      return {...next,contactLog:[{day:G.day,contact:contact.id,mission:mission.id,success:roll<=chance,chance},...(G.contactLog||[])].slice(0,20)};
     }
 
     case "RESOLVE_EVENT": {
@@ -1324,40 +1413,25 @@ function MarketScreen({G,dispatch}) {
   const mood=G.areaState||{};
   const otherAreas=(G.seenPrices&&Object.keys(G.seenPrices).filter(id=>id!==G.locationId))||[];
   const worth=netWorthOf(G);
-  const targetLeft=Math.max(0,RUN_GOAL_NET_WORTH-worth);
-  const progressPct=Math.min(100,Math.round((worth/RUN_GOAL_NET_WORTH)*100));
-  const pace=paceState(G);
-  const debtBlock=G.dre.loan>0;
-  const heatBlock=G.heat>=RUN_GOAL_HEAT_CAP;
-  const earlyHint=G.day<=5?(
-    G.day<=2?"Starter edge: focus on 1-2 low tier flips and keep travel cheap.":
-    G.day<=3?"Route check: compare Midtown pill prices vs Downtown party demand.":
-    "Debt + heat discipline now decides Day 30 outcomes."
-  ):null;
+  const debtValue=G.dre.loan>0?`$${G.dre.loan.toLocaleString()}`:"Clear";
+  const pressure=pressureLevel(G.day);
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <PH tab="market" icon="mkt" title="Drug Market" sub={`${cargo}/${G.maxCarry} bag · ${area?.hint||""} · Risk ${area?.risk||1}/4`}/>
       <div className="panel-scroll">
         <div className="goal-banner">
-          <strong>Day 30 Goal:</strong> ${RUN_GOAL_NET_WORTH.toLocaleString()}+ net worth · clear Dre debt · finish below heat {RUN_GOAL_HEAT_CAP}.
+          <strong>Run Goal:</strong> Stack as much money as possible before Day 30 while surviving heat, debt, and health pressure.
         </div>
-        <div className="goal-banner" style={{marginTop:6,padding:"10px 12px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-            <strong>Progress {progressPct}%</strong>
-            <span style={{color:pace.tone==="good"?"var(--money2)":pace.tone==="bad"?"var(--red2)":"var(--ink)"}}>{pace.label}</span>
-          </div>
-          <div style={{height:6,background:"var(--plate)",border:"1px solid var(--border2)",margin:"6px 0 8px",position:"relative"}}>
-            <div style={{height:"100%",width:`${progressPct}%`,background:"linear-gradient(90deg,var(--gold),var(--money2))"}}/>
-          </div>
-          <div style={{fontSize:".68rem",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"var(--ink-dim)"}}>
-            ${targetLeft.toLocaleString()} left · {debtBlock?"Boss Tier blocked by debt":"Debt clear"} · {heatBlock?"Heat too high for boss finish":"Heat eligible for boss tier"}
-          </div>
+        <div className="goal-banner" style={{marginTop:6,padding:"10px 12px",display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
+          <div><div style={{fontSize:".58rem",letterSpacing:".12em",textTransform:"uppercase",color:"var(--ink-muted)"}}>Net Worth</div><strong style={{fontFamily:"var(--font-mono)"}}>${worth.toLocaleString()}</strong></div>
+          <div><div style={{fontSize:".58rem",letterSpacing:".12em",textTransform:"uppercase",color:"var(--ink-muted)"}}>Heat</div><strong style={{color:G.heat>=8?"var(--red2)":"var(--ink)"}}>{G.heat}</strong></div>
+          <div><div style={{fontSize:".58rem",letterSpacing:".12em",textTransform:"uppercase",color:"var(--ink-muted)"}}>Debt</div><strong>{debtValue}</strong></div>
+          <div><div style={{fontSize:".58rem",letterSpacing:".12em",textTransform:"uppercase",color:"var(--ink-muted)"}}>Rep</div><strong>{G.rep}</strong></div>
         </div>
         <div className="goal-banner" style={{marginTop:6,padding:"8px 12px"}}>
-          <strong>Area pulse:</strong> {(AREAS.find(a=>a.id===mood.hotAreaId)?.name)||"—"} hot for {mood.hotCategory||"—"} · Crackdown: {(AREAS.find(a=>a.id===mood.crackdownAreaId)?.name)||"—"} · {mood.laneNote}
+          <strong>Area pulse:</strong> {(AREAS.find(a=>a.id===mood.hotAreaId)?.name)||"—"} hot for {mood.hotCategory||"—"} · Crackdown: {(AREAS.find(a=>a.id===mood.crackdownAreaId)?.name)||"—"} · Pressure tier {pressure}/3
         </div>
-        {earlyHint&&<div className="goal-banner" style={{marginTop:6,padding:"8px 12px",borderColor:"#604010",color:"#e0c080"}}><strong>Day {G.day} guidance:</strong> {earlyHint}</div>}
         <div className="mkt-list">
           <div style={{display:"grid",gridTemplateColumns:"1fr 100px 52px 44px 80px",gap:8,padding:"3px 10px 3px 14px"}}>
             {["Drug Name","Price","Trend","Owned",""].map(l=>(
@@ -1582,10 +1656,11 @@ function ShopScreen({G,dispatch}) {
 // ── HOSPITAL ──────────────────────────────────────────────────────────────────
 function HospitalScreen({G,dispatch}) {
   const healthy=G.health>65;
+  const pressureTax=1+(pressureLevel(G.day)*0.12);
   const heals=[
-    {name:"First Aid Kit",   cost:60,  amt:25,  desc:"Basic patch — quick fix"},
-    {name:"Clinic Visit",    cost:160, amt:55,  desc:"Proper treatment"},
-    {name:"Doctor On Call",  cost:380, amt:100, desc:"Full recovery · no questions"},
+    {name:"First Aid Kit",   cost:Math.round(60*pressureTax),  amt:25,  desc:"Basic patch — quick fix"},
+    {name:"Clinic Visit",    cost:Math.round(160*pressureTax), amt:55,  desc:"Proper treatment"},
+    {name:"Doctor On Call",  cost:Math.round(380*pressureTax), amt:100, desc:"Full recovery · no questions"},
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
@@ -1617,6 +1692,49 @@ function HospitalScreen({G,dispatch}) {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactsScreen({G,dispatch}) {
+  const hasBurner=G.assets.includes("burner_pack");
+  if(!hasBurner){
+    return (
+      <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+        <PH tab="stats" icon="warn" title="Contacts" sub="Locked"/>
+        <div className="panel-scroll">
+          <div className="bank-card">
+            <div className="bank-label">Burner Required</div>
+            <div style={{fontSize:".85rem",color:"var(--ink-dim)"}}>Buy Burner Pack in Shop (Rep 5) to unlock contacts and missions.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const available=CONTACTS.filter(c=>G.rep>=c.unlockRep);
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <PH tab="stats" icon="rep" title="Contacts" sub="Burner network"/>
+      <div className="panel-scroll">
+        {available.map((c)=>(
+          <div key={c.id} className="bank-card" style={{marginBottom:10}}>
+            <div className="bank-label">{c.name}</div>
+            {c.missions.map((m)=> {
+              const locked=G.rep<(m.repReq||0);
+              return <div key={m.id} className="shop-item" style={{marginTop:8}}>
+                <div style={{flex:1}}>
+                  <div className="shop-name">{m.title}</div>
+                  <div className="shop-desc">{m.desc}</div>
+                  <div style={{fontSize:".65rem",marginTop:4,color:"var(--ink-dim)"}}>{m.risk}</div>
+                  <div style={{fontSize:".64rem",marginTop:4,color:"var(--ink-muted)"}}>Outcomes: Success or fail based on RNG + rep/heat/health/area risk.</div>
+                  {locked&&<div style={{fontSize:".62rem",fontWeight:700,letterSpacing:".08em",color:"var(--red2)",marginTop:3}}>REQ REP {m.repReq}</div>}
+                </div>
+                <button className="btn btn-primary" style={{padding:"6px 12px",fontSize:".72rem"}} disabled={locked} onClick={()=>dispatch({type:"RUN_MISSION",contactId:c.id,missionId:m.id})}>Run</button>
+              </div>;
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1707,6 +1825,25 @@ function ConfirmModal({title,msg,onConfirm,onCancel}) {
   );
 }
 
+function MenuModal({onClose,onSave,onLoad,onNew,hasManual}) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal confirm-modal" onClick={e=>e.stopPropagation()}>
+        <div className="confirm-body">
+          <div className="confirm-title">Run Menu</div>
+          <div className="confirm-msg">Manage your run state.</div>
+          <div className="confirm-btns" style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+            <button className="btn btn-primary" onClick={onSave}>Save Game</button>
+            <button className="btn btn-secondary" onClick={onLoad} disabled={!hasManual}>Load Save</button>
+            <button className="btn btn-danger" onClick={onNew}>New Game</button>
+            <button className="btn btn-secondary" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── EVENT MODAL ───────────────────────────────────────────────────────────────
 function EventModal({ev,dispatch}) {
   return (
@@ -1777,10 +1914,10 @@ function DaySummaryModal({summary,dispatch}) {
           <div className="confirm-title">End of Day {summary.day}</div>
           <div className="confirm-msg" style={{textAlign:"left",lineHeight:1.7}}>
             <div>Daily P/L: <strong style={{color:pnlTone}}>{summary.pnl>=0?"+":""}${summary.pnl.toLocaleString()}</strong></div>
-            <div>Best Trade: <strong>${summary.bestTrade.toLocaleString()}</strong></div>
+            <div>Biggest Sale: <strong>${summary.biggestSale.toLocaleString()}</strong></div>
             <div>Net Worth: <strong>${summary.netWorth.toLocaleString()}</strong></div>
             <div>Debt: <strong>{summary.debt>0?`$${summary.debt.toLocaleString()}`:"Clear"}</strong>{summary.debtOverdue?" · OVERDUE":""}</div>
-            <div>Heat: <strong>{summary.heat}</strong></div>
+            <div>Heat: <strong>{summary.heat}</strong> ({summary.heatDelta>=0?"+":""}{summary.heatDelta})</div>
             {summary.areaTop&&<div>Strongest Area Today: <strong>{AREAS.find(a=>a.id===summary.areaTop[0])?.name||summary.areaTop[0]}</strong> (${summary.areaTop[1].toLocaleString()})</div>}
             <div style={{marginTop:8,color:"var(--gold2)"}}>{summary.note}</div>
           </div>
@@ -1830,17 +1967,19 @@ const TABS=[
   {id:"bank",     label:"Bank",   icon:"bank"},
   {id:"shop",     label:"Shop",   icon:"shop"},
   {id:"hospital", label:"Clinic", icon:"hosp"},
+  {id:"contacts", label:"Contacts", icon:"rep"},
   {id:"stats",    label:"Stats",  icon:"stats"},
 ];
 
 function App() {
-  const saved=()=>{try{const s=localStorage.getItem("907g3");return s?JSON.parse(s):null;}catch{return null;}};
+  const saved=()=>{try{const s=localStorage.getItem(SAVE_KEY);return s?JSON.parse(s):null;}catch{return null;}};
   const [G,dispatch]=useReducer(reducer,null,()=>saved()||initGame());
   const [tab,setTab]=useState("market");
   const [travel,setTravel]=useState(false);
   const [confirm,setConfirm]=useState(null);
+  const [menuOpen,setMenuOpen]=useState(false);
 
-  useEffect(()=>{try{localStorage.setItem("907g3",JSON.stringify(G));}catch{};},[G]);
+  useEffect(()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(G));}catch{};},[G]);
 
   const area=AREAS.find(a=>a.id===G.locationId);
   const cargo=Object.values(G.inventory).reduce((s,v)=>s+v,0);
@@ -1849,18 +1988,19 @@ function App() {
   const worth=netWorthOf(G);
   const heatBand=getHeatBand(G.heat);
   const dreOverdue=G.dre.loan>0&&G.day>G.dre.deadline;
-  const pace=paceState(G);
+  const tabs=TABS.filter(t=>t.id!=="contacts"||G.assets.includes("burner_pack"));
+  const hasManualSave=(()=>{try{return !!localStorage.getItem(MANUAL_SAVE_KEY);}catch{return false;}})();
 
   return (
     <div className="app">
       {/* HUD */}
       <header className="panel hud">
         <div className="logo">907 <em>HUSTLE</em><span className="logo-drip">Anchorage Run</span></div>
+        <button className="btn btn-secondary" style={{padding:"6px 10px",fontSize:".68rem"}} onClick={()=>setMenuOpen(true)}>Menu</button>
         <div className="chips">
           <Chip icon="cash" label="Cash"  value={`$${G.cash.toLocaleString()}`}     cls="chip-cash"/>
           {G.bank>0&&<Chip icon="bank" label="Bank"  value={`$${G.bank.toLocaleString()}`} cls="chip-bank"/>}
           <Chip icon="stats" label="Worth" value={`$${worth.toLocaleString()}`} cls={worth>=RUN_GOAL_NET_WORTH?"chip-bank":""}/>
-          <Chip icon="warn" label="Pace" value={pace.label.replace(" of "," ")} cls={pace.tone==="good"?"chip-bank":pace.tone==="bad"?"chip-heat":""}/>
           <Chip icon="bag"  label="Bag"   value={`${cargo}/${G.maxCarry}`}/>
           <Chip icon="day"  label="Day"   value={`${G.day}/30 · ${SLOTS[G.tick-1]}`}/>
           <Chip icon="loc"  label="Area"  value={area?.name}/>
@@ -1873,7 +2013,7 @@ function App() {
 
       {/* NAV */}
       <nav className="nav">
-        {TABS.map(t=>(
+        {tabs.map(t=>(
           <button key={t.id} className={`tab${tab===t.id?" active":""}`} onClick={()=>setTab(t.id)}>
             <Ic n={t.icon} sz={14}/>{t.label}
           </button>
@@ -1887,6 +2027,7 @@ function App() {
         {tab==="bank"     &&<BankScreen     G={G} dispatch={dispatch}/>}
         {tab==="shop"     &&<ShopScreen     G={G} dispatch={dispatch}/>}
         {tab==="hospital" &&<HospitalScreen G={G} dispatch={dispatch}/>}
+        {tab==="contacts" &&<ContactsScreen G={G} dispatch={dispatch}/>}
         {tab==="stats"    &&<StatsScreen    G={G}/>}
       </main>
 
@@ -1923,6 +2064,13 @@ function App() {
       {/* MODALS */}
       {travel&&<TravelModal G={G} onTravel={(id)=>{dispatch({type:"TRAVEL",areaId:id});setTravel(false);}} onClose={()=>setTravel(false)}/>}
       {confirm&&<ConfirmModal title={confirm.title} msg={confirm.msg} onConfirm={()=>{confirm.action();setConfirm(null);}} onCancel={()=>setConfirm(null)}/>}
+      {menuOpen&&<MenuModal
+        hasManual={hasManualSave}
+        onClose={()=>setMenuOpen(false)}
+        onSave={()=>{try{localStorage.setItem(MANUAL_SAVE_KEY,JSON.stringify(G));}catch{} setMenuOpen(false);}}
+        onLoad={()=>{try{const raw=localStorage.getItem(MANUAL_SAVE_KEY);if(raw){const data=JSON.parse(raw);localStorage.setItem(SAVE_KEY,JSON.stringify(data));window.location.reload();}}catch{} setMenuOpen(false);}}
+        onNew={()=>{dispatch({type:"NEW_GAME"});setTab("market");setMenuOpen(false);}}
+      />}
       {G.daySummary&&!G.gameOver&&<DaySummaryModal summary={G.daySummary} dispatch={dispatch}/>}
       {G.pendingEvent&&!G.gameOver&&!G.combatState&&!G.daySummary&&<EventModal ev={G.pendingEvent} dispatch={dispatch}/>}
       {G.combatState&&!G.gameOver&&<CombatModal G={G} dispatch={dispatch}/>}
