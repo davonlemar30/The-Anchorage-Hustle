@@ -844,17 +844,17 @@ function genPrices(locationId,previous={},tick=1,G=null) {
   const p = {};
   for(const d of DRUGS){
     const anchor=(d.min+d.max)/2;
-    const prev=previous[d.id]||anchor;
-    const drift=prev+(anchor-prev)*0.22;
+    const bias = area.bias[d.id]||1;
+    const prev=previous[d.id]||(anchor*bias);
+    const drift=prev+(anchor*bias-prev)*0.22;
     const daySwing=tick===1?(1+(Math.random()*2-1)*(d.vol*0.38)):1;
     const intraday=1+(Math.random()*2-1)*Math.max(0.03,d.vol*0.2);
     const b = drift*daySwing*intraday;
     const s = 1+(Math.random()*2-1)*(d.vol*0.16);
-    const bias = area.bias[d.id]||1;
     const moodBoost=(mood.hotAreaId===locationId&&d.cat===mood.hotCategory)?1.16:1;
     const crackdown=(mood.crackdownAreaId===locationId&&d.tier>=3)?1.08:1;
     const fatigue=Math.max(0.88,1-(farmCount*0.015));
-    p[d.id] = Math.max(5, Math.round(Math.min(d.max*1.38,Math.max(d.min*0.72,b*s*bias*moodBoost*crackdown*fatigue))));
+    p[d.id] = Math.max(5, Math.round(Math.min(d.max*1.38,Math.max(d.min*0.72,b*s*moodBoost*crackdown*fatigue))));
   }
   return p;
 }
@@ -1086,7 +1086,6 @@ function reducer(G,action) {
         rep:Math.max(0,G.rep+repDeltaForTrade(drugId,qty,"buy")),
         dayStats:{...G.dayStats,bestTrade:Math.max(G.dayStats?.bestTrade||0,cost)},
         runStats:{...G.runStats,bestTrade:Math.max(G.runStats?.bestTrade||0,cost)},
-        areaTradeCounts:{...G.areaTradeCounts,[G.locationId]:(G.areaTradeCounts?.[G.locationId]||0)+1},
         feed:addFeed(G,`You buy ${qty} of ${DRUGS.find(d=>d.id===drugId)?.name} for $${cost.toLocaleString()}.`,"good"),
       };
       next={...next,localLastSeen:{...G.localLastSeen,[drugId]:G.prices[drugId]}};
@@ -1777,9 +1776,6 @@ function MarketScreen({G,dispatch}) {
             const mb=maxBuy(drug.id);
             const showBestFlip=hasIntel(G,"bestFlipTag")&&drug.id===bestFlip;
             const showBestBuy=hasIntel(G,"bestBuyHint");
-            const h=G.history?.[drug.id]||[];
-            const momentum=h.length>=4?((h[h.length-1]-h[Math.max(0,h.length-4)])/Math.max(1,h[Math.max(0,h.length-4)])):0;
-            const valueSignal=momentum>0.2?"overheated":momentum>0.06?"rising":momentum<-0.2?"undervalued":momentum<-0.06?"falling":"stable";
             const bestAreaRec=showBestBuy&&otherAreas.length>0?otherAreas
               .map(id=>({id,price:G.seenPrices[id]?.[drug.id]}))
               .filter(x=>x.price)
@@ -1799,15 +1795,11 @@ function MarketScreen({G,dispatch}) {
                   <div>
                     <div className="drug-price">${buy.toLocaleString()}</div>
                     <div className="drug-sell">↑ ${sell.toLocaleString()}</div>
-                    <div className="drug-memo">
-                      {G.localLastSeen?.[drug.id]?`Last seen here: $${G.localLastSeen[drug.id].toLocaleString()}`:"Last seen here: —"}
-                      <span> · {valueSignal}</span>
-                      {bestAreaRec&&(()=>{
+                    {bestAreaRec&&<div className="drug-memo">{(()=>{
                         const areaName=AREAS.find(a=>a.id===bestAreaRec.id)?.name||bestAreaRec.id;
                         const ageTxt=bestAreaAge>8?"stale":`${bestAreaAge}t ago`;
-                        return <span> · Best buy: ${bestAreaRec.price.toLocaleString()} @ {areaName} ({ageTxt})</span>;
-                      })()}
-                    </div>
+                        return <span>Best buy: ${bestAreaRec.price.toLocaleString()} @ {areaName} ({ageTxt})</span>;
+                      })()}</div>}
                   </div>
                   <div className={`trend trend-${trend.dir==="up"||trend.dir==="up-strong"?"up":trend.dir==="down"||trend.dir==="down-strong"?"down":"flat"}`} title={trendVisible?"Price trend":"Trends locked — earn rep or get a burner"}>{trend.sym}</div>
                   <div className={`owned-badge${owned>0?" has":""}`}>{owned}</div>
