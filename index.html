@@ -2612,8 +2612,6 @@ function App() {
   const [topSubmenu,setTopSubmenu]=useState(null);
 
   useEffect(()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(G));}catch{};},[G]);
-  useEffect(()=>{ setTopSubmenu(null); },[tab]);
-
   const area=AREAS.find(a=>a.id===G.locationId);
   const cargo=Object.values(G.inventory).reduce((s,v)=>s+v,0);
   const heatHi=G.heat>=7,heatMid=G.heat>=4;
@@ -2626,13 +2624,23 @@ function App() {
   const nextContact=!isDreUnlocked(G)?"Dre @ 4 rep or first loan":!isPlugUnlocked(G)?"Plug @ 8 rep + $500 bank":!isLookoutUnlocked(G)?"Lookout @ heat 4 or rep 6":"All contacts online";
   const nextCat=!categoryStatus(G,"POWDER").unlocked?"Powder @ 4 rep":!categoryStatus(G,"OPIATE").unlocked?"Opiate @ rep 6 + Dre":!categoryStatus(G,"PARTY").unlocked?"Party/Syrup via Plug":"All categories open";
   const nextUpgrade=UPGRADES.filter(u=>!G.assets.includes(u.id)).sort((a,b)=>a.cost-b.cost)[0];
+  const placesGroup = [
+    { id:"stash", label:"Stash" },
+    { id:"shop", label:"Shopping" },
+    { id:"hospital", label:"Clinic" },
+  ];
+  const infoGroup = [
+    { id:"bank", label:"Finances" },
+    ...(hasPhoneAccess(G) ? [{ id:"contacts", label:"Phone" }] : []),
+    { id:"stats", label:"Stats" },
+  ];
   const topTabs = [
     { id:"market", label:"Market", icon:"mkt", direct:true },
-    { id:"places", label:"Places", icon:"travel", group:["stash","bank","shop","hospital"] },
-    ...(hasPhoneAccess(G) ? [{ id:"contacts", label:"Phone", icon:"rep", direct:true }] : []),
-    { id:"stats", label:"Stats", icon:"stats", direct:true },
+    { id:"places", label:"Places", icon:"travel", group:placesGroup },
+    { id:"info", label:"Info", icon:"stats", group:infoGroup },
   ];
-  const placesActive = ["stash","bank","shop","hospital"].includes(tab);
+  const placesActive = placesGroup.some((item)=>item.id===tab);
+  const infoActive = infoGroup.some((item)=>item.id===tab);
 
   return (
     <div className="app">
@@ -2655,14 +2663,17 @@ function App() {
           {topTabs.map((t)=>(
             <button
               key={t.id}
-              className={`tab${(t.id==="places"?placesActive:tab===t.id)?" active":""}`}
+              className={`tab${(t.id==="places"&&placesActive)||(t.id==="info"&&infoActive)||tab===t.id?" active":""}`}
               onClick={()=>{
                 if (t.group) {
-                  setTopSubmenu(topSubmenu===t.id ? null : t.id);
-                  if (!placesActive) setTab(t.group[0]);
+                  const nextOpen = topSubmenu===t.id ? null : t.id;
+                  setTopSubmenu(nextOpen);
+                  const groupActive=t.group.some((item)=>item.id===tab);
+                  if (!groupActive) setTab(t.group[0].id);
                   return;
                 }
                 setTab(t.id);
+                setTopSubmenu(null);
               }}
             >
               <Ic n={t.icon} sz={14}/>{t.label}
@@ -2671,12 +2682,20 @@ function App() {
         </nav>
         {topSubmenu==="places" && (
           <div className="nav-submenu-row">
-            {[
-              { id:"stash", label:"Stash" },
-              { id:"bank", label:"Finances" },
-              { id:"shop", label:"Shopping" },
-              { id:"hospital", label:"Clinic" },
-            ].map((item)=>(
+            {placesGroup.map((item)=>(
+              <button
+                key={item.id}
+                className={`nav-submenu-item${tab===item.id?" active":""}`}
+                onClick={()=>setTab(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {topSubmenu==="info" && (
+          <div className="nav-submenu-row">
+            {infoGroup.map((item)=>(
               <button
                 key={item.id}
                 className={`nav-submenu-item${tab===item.id?" active":""}`}
