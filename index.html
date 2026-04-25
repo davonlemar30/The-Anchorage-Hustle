@@ -1937,11 +1937,9 @@ function MarketScreen({G,dispatch}) {
                 <div className="drug-row-main" onClick={()=>setTradeDrugId(drug.id)}>
                   <div>
                     <div className="drug-name">{drug.name}</div>
-                    <div className="drug-cat">{CATEGORY_LABELS[drug.cat]||drug.cat}</div>
                   </div>
                   <div>
                     <div className="drug-price">${buy.toLocaleString()}</div>
-                    <div className="drug-sell">Sell ${sellP(drug.id).toLocaleString()}</div>
                   </div>
                   <div className={`trend trend-${trend.dir==="up"||trend.dir==="up-strong"?"up":trend.dir==="down"||trend.dir==="down-strong"?"down":"flat"}`} title={trendVisible?"Price trend":"Trends locked — earn rep or get a burner"}>{trend.sym}</div>
                   <div className={`owned-badge${owned>0?" has":""}`}>{owned}</div>
@@ -2459,7 +2457,6 @@ function WorldPricesScreen({G}) {
               <div className="drug-row-main" style={{gridTemplateColumns:"1fr 120px 1fr 1fr"}}>
                 <div>
                   <div className="drug-name">{drug.name}</div>
-                  <div className="drug-cat">{CATEGORY_LABELS[drug.cat]||drug.cat}</div>
                 </div>
                 <div className="drug-price">${drug.min.toLocaleString()} - ${drug.max.toLocaleString()}</div>
                 <div style={{fontSize:".72rem",color:low?"var(--money2)":"var(--ink-muted)"}}>
