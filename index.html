@@ -404,6 +404,34 @@ body {
   letter-spacing:.04em;
   font-family:var(--font-ui);
 }
+.trade-modal-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:10px; }
+.trade-stat {
+  border:1px solid var(--border2);
+  border-radius:var(--r);
+  background:var(--surf2);
+  padding:8px 10px;
+}
+.trade-stat-label {
+  font-size:.58rem;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--ink-muted);
+  margin-bottom:4px;
+}
+.trade-stat-value { font-family:var(--font-mono); font-size:.92rem; color:var(--ink); }
+.trade-outcome {
+  margin-top:8px;
+  border:1px solid var(--border2);
+  border-radius:var(--r);
+  padding:8px 10px;
+  font-size:.72rem;
+  letter-spacing:.04em;
+  color:var(--ink-dim);
+}
+.trade-outcome.profit { border-color:#305018; background:#101d0b; color:var(--money2); }
+.trade-outcome.loss { border-color:#7a2818; background:#20100d; color:#f1a08d; }
+.trade-outcome.even { border-color:var(--edge); background:#1c1710; color:var(--ink-dim); }
 
 /* BUTTONS */
 .btn {
@@ -1879,39 +1907,15 @@ function Chip({icon,label,value,cls=""}) {
 
 // ── MARKET ────────────────────────────────────────────────────────────────────
 function MarketScreen({G,dispatch}) {
-  const [expanded,setExpanded]=useState(null);
-  const [qtys,setQtys]=useState({});
+  const [tradeDrugId,setTradeDrugId]=useState(null);
   const cargo=Object.values(G.inventory).reduce((s,v)=>s+v,0);
   const repBonus=Math.min(0.14,G.rep*0.003);
   const sellP=(id)=>Math.max(1,Math.round((G.prices[id]||0)*(1.04+repBonus)));
-  const maxBuy=(id)=>Math.min(G.maxCarry-cargo,Math.floor(G.cash/Math.max(1,G.prices[id])));
-  const getQ=(id)=>Math.max(1,qtys[id]||1);
-  const setQ=(id,v)=>setQtys(q=>({...q,[id]:Math.max(1,v)}));
-  const bestFlip=DRUGS.reduce((b,d)=>{const s=sellP(d.id)-(G.prices[d.id]||0);return s>b.s?{id:d.id,s}:b;},{id:null,s:-Infinity}).id;
   const area=AREAS.find(a=>a.id===G.locationId);
-  const mood=G.areaState||{};
-  const otherAreas=(G.seenPrices&&Object.keys(G.seenPrices).filter(id=>id!==G.locationId))||[];
-  const worth=netWorthOf(G);
-  const debtValue=G.dre.loan>0?`$${G.dre.loan.toLocaleString()}`:"Clear";
-  const pressure=pressureLevel(G.day);
-
-  const showPulse=hasIntel(G,"areaPulse");
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <PH tab="market" icon="mkt" title="Drug Market" sub={`${cargo}/${G.maxCarry} bag · ${area?.hint||""} · Risk ${area?.risk||1}/4`}/>
+      <PH tab="market" icon="mkt" title="Drug Market" sub={`${cargo}/${G.maxCarry} bag · ${area?.name||""} · Risk ${area?.risk||1}/4`}/>
       <div className="panel-scroll">
-        {showPulse?(
-          <div className="goal-banner" style={{padding:"8px 12px",display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
-            <span style={{color:"var(--gold2)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",fontSize:".6rem"}}>Area Pulse</span>
-            <span><span style={{color:"var(--ink-muted)"}}>Hot:</span> {(AREAS.find(a=>a.id===mood.hotAreaId)?.name)||"—"} / {mood.hotCategory||"—"}</span>
-            <span><span style={{color:"var(--ink-muted)"}}>Crackdown:</span> {(AREAS.find(a=>a.id===mood.crackdownAreaId)?.name)||"—"}</span>
-            <span><span style={{color:"var(--ink-muted)"}}>Pressure:</span> {pressure}/3</span>
-          </div>
-        ):(
-          <div className="goal-banner" style={{padding:"8px 12px",color:"var(--ink-muted)"}}>
-            <strong style={{color:"var(--ink-dim)"}}>No broad intel yet.</strong> Work your phone contacts and earn better signals.
-          </div>
-        )}
         <div className="mkt-list">
           <div style={{display:"grid",gridTemplateColumns:"1fr 100px 52px 44px 80px",gap:8,padding:"3px 10px 3px 14px"}}>
             {["Drug","Now","Trend","Own",""].map(l=>(
@@ -1919,89 +1923,107 @@ function MarketScreen({G,dispatch}) {
             ))}
           </div>
           {CATEGORY_ORDER.filter(cat=>categoryStatus(G,cat).unlocked).map(cat=>{
-            const lock=categoryStatus(G,cat);
             const drugs=DRUGS.filter(d=>d.cat===cat);
             return <div key={cat} style={{marginBottom:6}}>
               <div className="goal-banner" style={{margin:"4px 0",padding:"6px 10px"}}><strong>{CATEGORY_LABELS[cat]||cat}</strong><span style={{marginLeft:8,color:"var(--ink-muted)"}}>{drugs.length} items</span></div>
               {drugs.map(drug=>{
             const buy=G.prices[drug.id]||0;
-            const sell=sellP(drug.id);
             const owned=G.inventory[drug.id]||0;
-            const avgCost=avgCostFor(G,drug.id);
-            const perUnitProfit=sell-avgCost;
-            const forecast=projectedNextPriceRange(G,drug.id);
             const trendVisible=hasIntel(G,"trend");
             const trend=trendVisible?getTrend(drug.id,G.history):{dir:"flat",sym:"·"};
             const hot=trendVisible&&(trend.dir==="up-strong"||(trend.dir==="up"&&owned>0));
-            const isOpen=expanded===drug.id;
-            const qty=getQ(drug.id);
-            const qtyProfit=expectedProfitForQty(G,drug.id,Math.min(qty,owned));
-            const mb=maxBuy(drug.id);
-            const showBestFlip=hasIntel(G,"bestFlipTag")&&drug.id===bestFlip;
-            const showBestBuy=hasIntel(G,"bestBuyHint");
-            const bestAreaRec=showBestBuy&&otherAreas.length>0?otherAreas
-              .map(id=>({id,price:G.seenPrices[id]?.[drug.id]}))
-              .filter(x=>x.price)
-              .sort((a,b)=>a.price-b.price)[0]:null;
-            const bestAreaMeta=bestAreaRec?G.seenMeta?.[bestAreaRec.id]?.[drug.id]:null;
-            const bestAreaAge=bestAreaMeta?toAbsTick(G.day,G.tick)-toAbsTick(bestAreaMeta.day,bestAreaMeta.tick):null;
             return (
-              <div key={drug.id} className={`drug-row${isOpen?" expanded":""}${hot?" hot":""}`}>
-                <div className="drug-row-main" onClick={()=>setExpanded(isOpen?null:drug.id)}>
+              <div key={drug.id} className={`drug-row${hot?" hot":""}`}>
+                <div className="drug-row-main" onClick={()=>setTradeDrugId(drug.id)}>
                   <div>
-                    <div className="drug-name">
-                      {drug.name}
-                      {showBestFlip&&<span className="tag-hot">Best Flip</span>}
-                    </div>
-                    <div className="drug-cat">{owned>0?`Avg buy $${Math.round(avgCost).toLocaleString()} · ${perUnitProfit>=0?"+":"-"}$${Math.abs(Math.round(perUnitProfit)).toLocaleString()}/unit`:"Tap Trade"}</div>
+                    <div className="drug-name">{drug.name}</div>
+                    <div className="drug-cat">{CATEGORY_LABELS[drug.cat]||drug.cat}</div>
                   </div>
                   <div>
                     <div className="drug-price">${buy.toLocaleString()}</div>
-                    <div className="drug-sell">Sell ${sell.toLocaleString()}</div>
-                    {bestAreaRec&&<div className="drug-memo">{(()=>{
-                        const areaName=AREAS.find(a=>a.id===bestAreaRec.id)?.name||bestAreaRec.id;
-                        const ageTxt=bestAreaAge>8?"stale":`${bestAreaAge}t ago`;
-                        return <span>Best buy: ${bestAreaRec.price.toLocaleString()} @ {areaName} ({ageTxt})</span>;
-                      })()}</div>}
+                    <div className="drug-sell">Sell ${sellP(drug.id).toLocaleString()}</div>
                   </div>
                   <div className={`trend trend-${trend.dir==="up"||trend.dir==="up-strong"?"up":trend.dir==="down"||trend.dir==="down-strong"?"down":"flat"}`} title={trendVisible?"Price trend":"Trends locked — earn rep or get a burner"}>{trend.sym}</div>
                   <div className={`owned-badge${owned>0?" has":""}`}>{owned}</div>
-                  <button className="btn-trade" onClick={e=>{e.stopPropagation();setExpanded(isOpen?null:drug.id);}}>Trade</button>
+                  <button className="btn-trade" onClick={e=>{e.stopPropagation();setTradeDrugId(drug.id);}}>Trade</button>
                 </div>
-                {isOpen&&(
-                  <div className="drug-expand">
-                    <div className="expand-label">Quantity</div>
-                    <div className="qty-row">
-                      <button className="qty-btn" onClick={()=>setQ(drug.id,qty-1)}>−</button>
-                      <input className="qty-val" type="number" min="1" value={qty} onChange={e=>setQ(drug.id,parseInt(e.target.value)||1)}/>
-                      <button className="qty-btn" onClick={()=>setQ(drug.id,qty+1)}>+</button>
-                      <button className="qty-max" disabled={mb<1} onClick={()=>setQ(drug.id,Math.max(1,mb))} title="Fill with maximum you can afford/carry">Max Buy ({Math.max(0,mb)})</button>
-                      <button className="qty-max" disabled={owned<1} onClick={()=>setQ(drug.id,Math.max(1,owned))} title="Fill with everything you own">Max Sell ({owned})</button>
-                    </div>
-                    <div className="trade-btns">
-                      <button className="btn btn-buy" style={{flex:1}} disabled={mb<qty} onClick={()=>dispatch({type:"BUY",drugId:drug.id,qty})}>
-                        Buy {qty}<small>Pay ${ (buy*qty).toLocaleString()}</small>
-                      </button>
-                      <button className="btn btn-sell" style={{flex:1}} disabled={owned<1} onClick={()=>dispatch({type:"SELL",drugId:drug.id,qty:Math.min(qty,owned)})}>
-                        Sell {Math.min(qty,owned)}<small>Take ${ (sell*Math.min(qty,owned)).toLocaleString()} · {qtyProfit>=0?"+":"-"}${Math.abs(Math.round(qtyProfit)).toLocaleString()} est</small>
-                      </button>
-                    </div>
-                    {owned>0&&(
-                      <div className="market-micro-note">
-                        Est for {Math.min(qty,owned)} now: {qtyProfit>=0?"+":"-"}${Math.abs(Math.round(qtyProfit)).toLocaleString()} vs avg buy.
-                      </div>
-                    )}
-                    {forecast&&(
-                      <div style={{marginTop:8,fontSize:".64rem",color:"var(--ink-muted)",letterSpacing:".04em"}}>
-                        Next slot outlook: {forecast.dir==="up"?"↑ likely up":forecast.dir==="down"?"↓ likely down":"→ likely flat"} · ~${forecast.min.toLocaleString()}–${forecast.max.toLocaleString()} · {forecast.confidence} confidence
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             );})}
             </div>;
           })}
+        </div>
+      </div>
+      {tradeDrugId&&<TradeModal G={G} drugId={tradeDrugId} dispatch={dispatch} onClose={()=>setTradeDrugId(null)}/>}
+    </div>
+  );
+}
+
+function TradeModal({G,drugId,dispatch,onClose}) {
+  const drug=DRUGS.find(d=>d.id===drugId);
+  const [mode,setMode]=useState("buy");
+  const [qty,setQty]=useState(1);
+  if(!drug) return null;
+  const cargo=Object.values(G.inventory).reduce((s,v)=>s+v,0);
+  const buyPrice=G.prices[drug.id]||0;
+  const sellPrice=getSellPrice(G,drug.id);
+  const owned=G.inventory[drug.id]||0;
+  const maxBuy=Math.min(G.maxCarry-cargo,Math.floor(G.cash/Math.max(1,buyPrice)));
+  const maxSell=owned;
+  const cap=mode==="buy"?Math.max(1,maxBuy):Math.max(1,maxSell);
+  const safeQty=Math.max(1,Math.min(qty,cap));
+  const avgCost=avgCostFor(G,drug.id);
+  const total=mode==="buy" ? buyPrice*safeQty : sellPrice*safeQty;
+  const saleDelta=(sellPrice-avgCost);
+  const saleResult=saleDelta*safeQty;
+  const saleState=saleDelta>0?"profit":saleDelta<0?"loss":"even";
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal confirm-modal" onClick={e=>e.stopPropagation()}>
+        <PH tab="market" icon="mkt" title={`${drug.name} Trade`} sub={`${mode==="buy"?"Buy":"Sell"} · ${CATEGORY_LABELS[drug.cat]||drug.cat}`}/>
+        <div className="modal-body">
+          <div className="trade-btns" style={{marginBottom:10}}>
+            <button className={`btn ${mode==="buy"?"btn-buy":"btn-secondary"}`} style={{flex:1,padding:"8px 12px",fontSize:".72rem"}} onClick={()=>setMode("buy")}>Buy</button>
+            <button className={`btn ${mode==="sell"?"btn-sell":"btn-secondary"}`} style={{flex:1,padding:"8px 12px",fontSize:".72rem"}} onClick={()=>setMode("sell")}>Sell</button>
+          </div>
+          <div className="trade-modal-grid">
+            <div className="trade-stat">
+              <div className="trade-stat-label">{mode==="buy"?"Buy price / unit":"Sell price / unit"}</div>
+              <div className="trade-stat-value">${(mode==="buy"?buyPrice:sellPrice).toLocaleString()}</div>
+            </div>
+            <div className="trade-stat">
+              <div className="trade-stat-label">You own</div>
+              <div className="trade-stat-value">{owned.toLocaleString()} units</div>
+            </div>
+          </div>
+          <div className="qty-row" style={{marginBottom:8}}>
+            <button className="qty-btn" onClick={()=>setQty(safeQty-1)}>−</button>
+            <input className="qty-val" type="number" min="1" value={safeQty} onChange={e=>setQty(parseInt(e.target.value)||1)}/>
+            <button className="qty-btn" onClick={()=>setQty(safeQty+1)}>+</button>
+            <button className="qty-max" onClick={()=>setQty(cap)}>{mode==="buy"?`Max Buy (${Math.max(0,maxBuy)})`:`Max Sell (${maxSell})`}</button>
+          </div>
+          {mode==="sell"&&(
+            <div className={`trade-outcome ${saleState}`}>
+              {saleState==="profit"?"Profit":saleState==="loss"?"Loss":"Break-even"} per unit: {saleDelta>=0?"+":"-"}${Math.abs(Math.round(saleDelta)).toLocaleString()} ·
+              Total for {safeQty}: {saleResult>=0?"+":"-"}${Math.abs(Math.round(saleResult)).toLocaleString()}
+            </div>
+          )}
+          <div className="trade-stat" style={{marginTop:8}}>
+            <div className="trade-stat-label">{mode==="buy"?"Total cost":"Total sale"}</div>
+            <div className="trade-stat-value">${total.toLocaleString()}</div>
+          </div>
+          <div className="trade-btns" style={{marginTop:10}}>
+            <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Cancel</button>
+            {mode==="buy" ? (
+              <button className="btn btn-buy" style={{flex:1}} disabled={maxBuy<1||safeQty>maxBuy} onClick={()=>{dispatch({type:"BUY",drugId:drug.id,qty:safeQty});onClose();}}>
+                Buy {safeQty}
+              </button>
+            ) : (
+              <button className="btn btn-sell" style={{flex:1}} disabled={maxSell<1||safeQty>maxSell} onClick={()=>{dispatch({type:"SELL",drugId:drug.id,qty:safeQty});onClose();}}>
+                Sell {safeQty}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -2406,6 +2428,55 @@ function ContactsScreen({G,dispatch}) {
   );
 }
 
+function WorldPricesScreen({G}) {
+  const rows=DRUGS.map(drug=>{
+    const seenRows=AREAS
+      .map(area=>{
+        const price=G.seenPrices?.[area.id]?.[drug.id];
+        return price?{area,price}:null;
+      })
+      .filter(Boolean)
+      .sort((a,b)=>a.price-b.price);
+    const low=seenRows[0]||null;
+    const high=seenRows[seenRows.length-1]||null;
+    return {drug,low,high};
+  });
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <PH tab="stats" icon="stats" title="World Drug Prices" sub="Reference ranges + your last seen reads"/>
+      <div className="panel-scroll">
+        <div className="goal-banner" style={{padding:"8px 10px"}}>
+          This board is for quick world reference. Main market stays clean; compare routes here before you move.
+        </div>
+        <div className="mkt-list">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 120px 1fr 1fr",gap:8,padding:"3px 10px 3px 12px"}}>
+            {["Drug","Base Range","Last Seen Low","Last Seen High"].map(l=>(
+              <div key={l} style={{fontSize:".58rem",fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:"var(--ink-muted)",fontFamily:"var(--font-ui)"}}>{l}</div>
+            ))}
+          </div>
+          {rows.map(({drug,low,high})=>(
+            <div key={drug.id} className="drug-row">
+              <div className="drug-row-main" style={{gridTemplateColumns:"1fr 120px 1fr 1fr"}}>
+                <div>
+                  <div className="drug-name">{drug.name}</div>
+                  <div className="drug-cat">{CATEGORY_LABELS[drug.cat]||drug.cat}</div>
+                </div>
+                <div className="drug-price">${drug.min.toLocaleString()} - ${drug.max.toLocaleString()}</div>
+                <div style={{fontSize:".72rem",color:low?"var(--money2)":"var(--ink-muted)"}}>
+                  {low?`${low.area.name} · $${low.price.toLocaleString()}`:"No intel yet"}
+                </div>
+                <div style={{fontSize:".72rem",color:high?"#f1a08d":"var(--ink-muted)"}}>
+                  {high?`${high.area.name} · $${high.price.toLocaleString()}`:"No intel yet"}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── STATS ─────────────────────────────────────────────────────────────────────
 function StatsScreen({G}) {
   const cargo=Object.values(G.inventory).reduce((s,v)=>s+v,0);
@@ -2464,12 +2535,6 @@ function TravelModal({G,onTravel,onClose}) {
           <div className="area-grid">
             {AREAS.map(area=>{
               const cur=area.id===G.locationId;
-              const biasTop=Object.entries(area.bias||{}).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([id])=>DRUGS.find(d=>d.id===id)?.name).filter(Boolean);
-              const seen = Object.entries(G.seenPrices?.[area.id] || {});
-              const bestBuySeen = seen.length ? seen.slice().sort((a,b)=>a[1]-b[1])[0] : null;
-              const bestSellSeen = seen.length ? seen.slice().sort((a,b)=>b[1]-a[1])[0] : null;
-              const bestBuyName = bestBuySeen ? (DRUGS.find(d=>d.id===bestBuySeen[0])?.name || bestBuySeen[0]) : null;
-              const bestSellName = bestSellSeen ? (DRUGS.find(d=>d.id===bestSellSeen[0])?.name || bestSellSeen[0]) : null;
               return (
                 <div key={area.id} className={`area-card${cur?" current":""}`}>
                   <div className="area-name">{area.name}{cur&&<span style={{color:"var(--gold)",marginLeft:8,fontSize:".65rem",fontFamily:"var(--font-ui)",fontWeight:700,letterSpacing:".1em"}}>★ HERE</span>}</div>
@@ -2477,10 +2542,6 @@ function TravelModal({G,onTravel,onClose}) {
                   <div className="area-meta"><strong style={{color:"var(--ink-dim)"}}>Route Profile:</strong> Risk {area.risk}/4 · Police {area.police}/3 · Rival {area.rival}/3</div>
                   {mood.hotAreaId===area.id&&<div className="area-meta" style={{color:"var(--money2)"}}>Hot lane: {mood.hotCategory} demand spike</div>}
                   {mood.crackdownAreaId===area.id&&<div className="area-meta" style={{color:"var(--red2)"}}>APD spotlight: riskier while heat is high</div>}
-                  {(G.areaTradeCounts?.[area.id]||0)>=6&&<div className="area-meta" style={{color:"#d09030"}}>Route fatigued: margins cooling from overfarming</div>}
-                  {!!biasTop.length&&<div className="area-meta"><strong style={{color:"var(--ink-dim)"}}>Best Moves:</strong> {biasTop.join(" · ")}</div>}
-                  {!!bestBuySeen&&<div className="area-meta"><strong style={{color:"var(--ink-dim)"}}>Known cheap:</strong> {bestBuyName} @ ${bestBuySeen[1].toLocaleString()}</div>}
-                  {!!bestSellSeen&&<div className="area-meta"><strong style={{color:"var(--ink-dim)"}}>Known rich:</strong> {bestSellName} @ ${bestSellSeen[1].toLocaleString()}</div>}
                   <div className="area-risk">
                     <span style={{fontFamily:"var(--font-ui)",fontSize:".58rem",fontWeight:700,letterSpacing:".12em",color:"var(--ink-muted)",marginRight:4}}>RISK</span>
                     {Array.from({length:4},(_,i)=><div key={i} className={`risk-dot ${i<area.risk?"r":"e"}`}/>)}
@@ -2740,6 +2801,7 @@ function App() {
     { id:"hospital", label:"Clinic" },
   ];
   const infoGroup = [
+    { id:"world_prices", label:"World Drug Prices" },
     { id:"bank", label:"Finances" },
     ...(hasPhoneAccess(G) ? [{ id:"contacts", label:"Phone" }] : []),
     { id:"stats", label:"Stats" },
@@ -2825,6 +2887,7 @@ function App() {
       {/* MAIN */}
       <main className="main-panel panel">
         {tab==="market"   &&<MarketScreen   G={G} dispatch={dispatch}/>}
+        {tab==="world_prices" &&<WorldPricesScreen G={G}/>}
         {tab==="stash"    &&<StashScreen    G={G} dispatch={dispatch}/>}
         {tab==="bank"     &&<BankScreen     G={G} dispatch={dispatch}/>}
         {tab==="shop"     &&<ShopScreen     G={G} dispatch={dispatch}/>}
